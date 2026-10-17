@@ -18,6 +18,7 @@ from shipos.crew import (
     observe,
 )
 from shipos.engine.arbitration import deadline_min
+from shipos.sim.deferral import DeferralError, apply_deferral, capture_deferral
 from shipos.statemachine import conflicts, plan_transition
 
 
@@ -211,6 +212,8 @@ class Execution:
             trial = deepcopy(self)
             try:
                 trial.compile(decision, data, context)
+            except DeferralError:
+                raise  # Metadata rejection rolls back the whole Runner tick.
             except (ValueError, KeyError) as exc:
                 self.block("ambiguous_plan", subject=decision.subject, reason=str(exc))
             else:
@@ -242,7 +245,12 @@ class Execution:
                 raise ValueError("degraded-only action in an undegraded state")
             seconds(action.t_offset_s)
             if action.to_mode is not None:
-                context.manifests[gid].mode(action.to_mode)
+                try:
+                    context.manifests[gid].mode(action.to_mode)
+                except KeyError as exc:
+                    if action.kind == "defer":
+                        raise DeferralError("DEFER target mode is not declared") from exc
+                    raise
             if action.kind in ("pause", "suspend"):
                 rt = data["guests"][gid]
                 activity = context.manifests[gid].activity(rt["activity"])
@@ -280,22 +288,12 @@ class Execution:
                         "D3 delay_min includes transition/approach; deferred start is unspecified"
                     )
                 schedule = data["guests"][gid]["schedule"]
-                entries = [
-                    i
-                    for i, e in enumerate(schedule)
-                    if e["mode"] == action.to_mode and e["t_s"] > now
-                ]
-                if len(entries) != 1:
-                    raise ValueError(
-                        f"{gid}: defer requires a unique future {action.to_mode!r} entry"
-                    )
-                index = entries[0]
-                if not context.manifests[gid].mode(action.to_mode).deferrable:
-                    raise ValueError("target mode is not deferrable")
-                delay = seconds(action.delay_min * 60)
-                if not delay:
-                    raise ValueError("defer delay must be positive")
-                details = {"suffix": deepcopy(schedule[index:]), "delay_s": delay}
+                if (
+                    action.to_mode is None
+                    or not context.manifests[gid].mode(action.to_mode).deferrable
+                ):
+                    raise DeferralError("DEFER target mode is missing or not deferrable")
+                details = capture_deferral(action, schedule, due)
             if action.kind in ("pause", "suspend"):
                 p = pauses[gid]
                 rt = data["guests"][gid]
@@ -759,6 +757,9 @@ class Execution:
             return None
         if action.kind == "proceed" and rt["mode"] == action.to_mode:
             return None  # Incumbent proceeds; preserve its original activity clock.
+        replacement = None
+        if action.kind == "defer":
+            replacement = apply_deferral(task, rt["schedule"], now)
         if gid in self.protected and action.kind != "proceed":
             return "protected_winner"
         if not manifest.mode(rt["mode"]).interruptible:
@@ -766,14 +767,17 @@ class Execution:
         if manifest.safety_critical and task["decision_kind"] == "shedding":
             return "safety_critical_requires_separate_authority"
         if action.kind == "defer":
-            suffix = task["suffix"]
             schedule = rt["schedule"]
-            if not suffix or suffix[0]["t_s"] <= now or schedule[-len(suffix) :] != suffix:
-                return "deferred_schedule_changed_replan_required"
-            schedule[-len(suffix) :] = [{**e, "t_s": e["t_s"] + task["delay_s"]} for e in suffix]
+            suffix = task["planned_schedule"][task["schedule_index"] :]
             projected = self.generated.get(gid)
+            projected_entry = None
             if projected and projected["entry"] in suffix:
-                projected["entry"]["t_s"] += task["delay_s"]
+                index = suffix.index(projected["entry"])
+                projected_entry = deepcopy(task["shifted_suffix"][index])
+            # Every check and replacement is complete before mutating either container.
+            schedule[:] = replacement
+            if projected_entry is not None:
+                projected["entry"] = projected_entry
             return None
         activity = None
         if action.kind == "proceed":

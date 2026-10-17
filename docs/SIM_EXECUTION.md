@@ -4,6 +4,22 @@ Execution is an explicit, offline Track B controller outside the pure decision c
 It applies real chosen D3/D4 plans. It does not install admitted cards, select options,
 execute alternatives/armed ladders/contingencies, or simulate unprovided operator input.
 
+## Provisional protection: indefinite retention and blocked resumes
+
+**Sanjiv's protection-lifetime ruling is pending. This task changes no release policy.**
+Successful plan compilation adds the named winner when the priority protection flag
+is true, before delayed execution begins; winners accumulate. The implemented release
+predicate is a successful queued `mode` task with `activity=None`, or reset. For G4,
+recovery -> launch retains protection and launching -> flying releases it. This predicate
+does not infer terminal-mode semantics for every card.
+
+There is no timeout or release on crew/priority changes, KEEP/DENY, blocked execution
+or missing confirmation. **A winner can remain protected indefinitely.** Protected
+non-PROCEED actions (including DEFER), holds, external schedule overrides, conflicting
+state requests and mode tasks other than `declared_continuation` remain blocked.
+**A protected `declared_resume` can remain blocked indefinitely.** Main/Sanjiv must
+resolve this provisional policy; exact DEFER metadata does not override protection.
+
 ## Public integration interface
 
 ```python
@@ -92,13 +108,26 @@ non-actuating semantic blocker. All execution times must fit the simulator's 1 H
 - throttle/standby/shed enter the explicit target mode at the action offset and hold
   its power ceiling for the existing `shed.horizon_min` planning horizon. Future higher
   modes wait under that cap; no automatic post-cap restoration is invented.
-- defer shifts the uniquely matching future target and its suffix, preserving all
-  earlier entries. The original suffix is captured; an intervening schedule change
-  blocks rather than applying a stale index. Multiple matching targets fail closed.
+- D4 defer requires exact `Action.facts`: `schedule_index`, `from_t_s`, `to_t_s`
+  from Track A PR #43 (`8d4ae7d85ebd9295ecb7d52c9da3f8c878e2a4bb`).
+  The finite integral index identifies the original list entry, even with repeated
+  modes. Its original timestamp and mode must match. Source, destination and every
+  shifted suffix timestamp must be finite nonnegative whole seconds; destination
+  must be later than source, and the affected suffix must still be future when the
+  action executes. Every entry at/after the chosen original index moves by exactly
+  `to_t_s - from_t_s`. Earlier entries remain unchanged. `delay_min` is display only.
+  Missing metadata has no fallback to the first mode match or rounded display delay.
+  The full planned schedule is copied. Normal consumption of earlier prefix entries
+  is allowed; changes to the remaining prefix or suffix, insertions or reordering
+  require a new plan. `DeferralError` (a ValueError) rejects the whole Runner tick,
+  preserving snapshot, queue, RNG, context, crew evidence, cursor, log and hash even
+  if an earlier action in that tick was staged. Fractional timestamps are not rounded.
+  This strict consumer requires #43 for real D4 deferral. The unpatched producer's
+  missing facts fail closed; its code is not imported into this B branch.
 - reserve records a declared-mode power reservation. It adds neither consumption nor
-  charging. Protected winners survive through the declared activity/follow-up chain;
-  reservations/protection are released at its terminal mode transition. A protected
-  winner or non-interruptible active mode cannot be shed or overridden by a schedule.
+  charging. Protection follows the provisional predicate documented prominently
+  above, including indefinite-retention and blocked-resume cases. A protected winner
+  or non-interruptible active mode cannot be shed or overridden by a schedule.
 - StateRequest variables supported: speed_kn, course, noise, deck, emission,
   confirm:deck, a matching hold:<guest>, and deck_machinery=off. Machinery cannot simply
   be labelled off while an active guest mode still declares it running. Unknown
@@ -133,9 +162,12 @@ A separate clear-deck zero-crew test exercises real D3 with automatic simulated 
 2. **D3 deferral:** delay_min is remaining incumbent time + transition + approach, while
    the action carries only to_mode. It is not an unambiguous activity start timestamp.
    Such options fail closed. A specified start/meaning is needed from Sanjiv.
-3. **D4 repeated modes:** shedding._Move knows defer_index, but _action does not export
-   it. Repeated future entries of the same mode are ambiguous. Unique entries execute;
-   repeated entries need a Track A identification convention within existing facts.
+3. **D4 identity:** PR #43 now exports exact index/from/to facts, consumed without
+   mode-name search or display-delay arithmetic. Both repeated-mode entries and
+   their suffixes are supported when metadata and planned identity match. Missing,
+   stale or fractional metadata remains unsupported and rejects the tick. Producer
+   verification is performed in a separate detached assembly containing #43; no
+   Track A changes are published on this consumer branch.
 4. **Physical follow-ups:** G4 recovery is followed_by launch; launch enters flying.
    It does not charge after landing in the current card. G3 pause AND suspend declare
    holding then rerun, not a forced recovery/charging path. Thus baseline t=720 does
@@ -146,6 +178,22 @@ Controlled synthetic contract-edge tests explicitly label their inputs. The sepa
 D4 tests create declared future charging inputs locally and invoke the real planner;
 these are not presented as baseline B or real weather evidence.
 
+## Exact deferral example (synthetic consumer input)
+
+Given schedule `[(20, charging), (100, charging), (200, standby)]`, a chosen D4 action
+with target charging, `delay_min=1.7`, offset 5 and facts
+`{"schedule_index": 1, "from_t_s": 100, "to_t_s": 201}` produces
+`[(20, charging), (201, charging), (301, standby)]` at t=5.
+The second charging entry is selected; the exact shift is 101 seconds, while the
+rounded display would imply 102. Controlled consumer inputs are explicitly synthetic.
+
+The separate real-#43 regression uses a synthetic initial charging overlap and the
+actual shedding planner: it emits index 1, from=120, to=151, display delay=0.5 min.
+The consumer shifts 31 seconds, preserving an earlier standby entry and moving all
+later entries; actual snapshots reach charging/topping at t=151, and execution replay
+matches byte-for-byte. On the standalone B branch this integration test explicitly
+skips because the installed Track A producer predates #43, after verifying rejection.
+
 ## Replay and offline reproduction
 
 Observation mode retains v1/v2 bytes and the published 721-tick Scenario B hash
@@ -155,7 +203,10 @@ and controller evidence in every tick. Operator/forecast inputs are recorded at 
 exact ticks and reinjected automatically on execution replay. No cache path, network
 request, computer timezone or wall clock is read during stepping, reset or replay.
 Same compatible code, callback and assumption registry remain required; this is not
-an independently portable executable. Missing forecast weather coverage still fails
+an independently portable executable. Old execution records that relied on DEFER without
+exact facts require their original compatible consumer; this strict consumer rejects
+those inputs. Observation v1/v2 behavior and the no-deferral execution example below
+remain unchanged. Missing forecast weather coverage still fails
 transactionally; a reservation is not proof of future resource feasibility.
 
 Run from the repository root with `py -m uv run --offline python`, then paste:
