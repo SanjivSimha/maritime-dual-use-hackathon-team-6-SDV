@@ -78,6 +78,40 @@
           <button class="btn quiet" data-op="arbitration" type="button">Who goes first? (D3 recovery)</button>
           <button class="btn quiet" data-op="shedding" type="button">Degradation plan (D4)</button>
         </div>
+
+        <h2>Simulated execution</h2>
+        <p class="hint">Turning this on or off starts a fresh run with the same scenario, priority and crew; the previous run's evidence is archived under Session record. Real equipment is never commanded.</p>
+        <div class="row">
+          <label class="inline switch"><input id="execution" type="checkbox" data-capability="execution" disabled> Apply chosen engine actions in the simulation</label>
+        </div>
+        <div class="row">
+          <label class="inline">Confirmed by<input id="confirmBy" type="text" maxlength="100" value="deck officer" data-capability="confirm_deck" disabled></label>
+          <button id="confirmDeck" class="btn" type="button" data-capability="confirm_deck" disabled>Record deck-clear confirmation</button>
+        </div>
+        <p class="hint">Records the operator's statement at the next simulated second. It does not clear the deck.</p>
+        <ul id="capabilityNotes" class="capnotes" aria-label="Unavailable controls"></ul>
+
+        <h2>Mission status</h2>
+        <dl id="missionStatus" class="status"></dl>
+
+        <details id="envAdvanced" class="advanced">
+          <summary>Advanced: environment inputs</summary>
+          <p class="hint">Applying starts a fresh run and archives the previous evidence. Only bundled caches are offered; nothing is downloaded. Installation windows are conditional planning eligibility only: not permission, and nothing is installed.</p>
+          <form id="envForm" class="envform">
+            <label>Weather source<select id="environment" data-capability="environment" disabled>
+              <option value="scenario">Scenario default (no cached forecast)</option>
+              <option value="strait_of_sicily">Cached forecast: Strait of Sicily</option></select></label>
+            <fieldset id="envCache" class="cachefields">
+              <label>Scenario start (local)<input id="envStart" type="datetime-local" value="2026-10-17T08:00" step="60"></label>
+              <label>Time zone offset (min from UTC)<input id="envTz" type="number" min="-840" max="840" step="15" value="120"></label>
+              <label class="inline"><input id="envLayered" type="checkbox"> Layered water</label>
+              <label class="inline"><input id="envStale" type="checkbox"> Allow a stale cache</label>
+            </fieldset>
+            <button id="envApply" class="btn" type="submit" data-capability="environment" disabled>Apply (fresh run)</button>
+          </form>
+          <p id="environmentStatus" class="hint"></p>
+          <dl id="environmentView" class="status"></dl>
+        </details>
       </section>
 
       <section class="panel record" aria-label="Session record">
@@ -88,6 +122,10 @@
           <a id="jsonl" class="btn link" download>Log (JSONL)</a>
         </div>
         <p id="replayStatus" class="hint mono" role="status"></p>
+        <details id="previousRuns" hidden>
+          <summary>Previous runs (<span id="previousCount">0</span>)</summary>
+          <ol id="previousList" class="runs"></ol>
+        </details>
       </section>
     </div>
 
