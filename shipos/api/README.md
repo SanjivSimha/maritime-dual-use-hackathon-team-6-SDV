@@ -15,10 +15,10 @@ session IDs or wall-clock latency. Snapshot response-time gauge remains unavaila
 
 Complete judge-card import example:
 
-In LIVE Scenario A select G4 and click **Load selected card JSON**. The editor
+In LIVE Scenario A select G4 and open **Advanced: import a complete card (JSON)** and click **Load selected card**. The editor
 contains the complete resolved manifest. Set `id` to `JUDGE_DRONE` and change
-the `charging` mode's `power_kw` from 35 to 41, then click **Validate and admit
-complete card**. This unfamiliar ID and non-mass edit reach real admission through
+the `charging` mode's `power_kw` from 35 to 41, then click **Validate and
+evaluate**. This unfamiliar ID and non-mass edit reach real admission through
 `card_presented`; the original G4 manifest and installed guests remain unchanged.
 The same complete example can be generated for pasting with:
 
@@ -26,7 +26,7 @@ The same complete example can be generated for pasting with:
 .\.tools\uv.exe run --locked python -c "import json; from shipos.data import load_guests; c=load_guests()['G4'].model_dump(mode='json'); c['id']='JUDGE_DRONE'; next(m for m in c['modes'] if m['name']=='charging')['power_kw']=41; print(json.dumps(c,indent=2))"
 ```
 
-Click **Verify and execution-replay**, then export the evidence bundle. It embeds
+Click **Verify by replaying**, then export the evidence bundle. It embeds
 the full unfamiliar card, so replay does not load a repository file for that card.
 Reset removes it. The API command is `{"op":"import_card","card_json":"<complete JSON text>"}`.
 Malformed JSON, missing fields, invalid references/structures, nonfinite numbers,
@@ -55,18 +55,18 @@ Tested interaction sequence:
    Explicit Reset still restores A. B's documented YAML seed is 6.
 4. Select B (LIVE simulator), enter battery report 13, inject battery report.
    G4's actual snapshot percentage changes at t=0; its mode remains flying.
-   D3 is explicitly unavailable. First step emits initial.t_s; later steps advance
+   Real D3 runs on the report (G4 recovery before G3's survey leg); nothing is applied. First step emits initial.t_s; later steps advance
    one simulated second. Every injected event targets public runner.next_t_s.
 5. Click Step (t=1), fast-forward 3 ticks (t=4), then inject genset trip (t=5).
-   Platform status becomes one generator. D4 remains unavailable. HTTP and WebSocket
+   Platform status becomes one generator. Real D4 answers no_action (49.5 kW fits). HTTP and WebSocket
    receive the same updated snapshots. No action-applier or crew policy runs, and
    the session Runner does not use the cached environment (`EnvironmentInput` is an
    explicit opt-in for direct Runner use only).
-6. Click Verify and execution-replay: integrity is checked and the complete run is
+6. Click Verify by replaying: integrity is checked and the complete run is
    re-executed with the same callback and captured admission envelope. Every actual
    record must match byte-for-byte. A valid recomputed chain containing a false
    engine verdict fails execution replay.
-7. Download Export replay evidence (JSON bundle) and Canonical JSONL. The bundle
+7. Download Export evidence (JSON bundle) and Log (JSONL). The bundle
    includes JSONL, final hash, captured envelope, and versioned callback identifier.
    The JSONL endpoint also returns X-ShipOS-Final-Hash. Reset clears injected events,
    and repeating the same inputs produces the same bytes and hash.
@@ -81,12 +81,14 @@ Injecting a trip early means the baseline trip at 720 would no longer reduce the
 count; the runner rejects that tick transactionally. Reset to replay the untouched
 baseline. No baseline event is silently suppressed.
 
-NotImplementedError from D3/D4 is recorded by Runner as engine_not_implemented;
+D3/D4 are real engines on main. If an engine raises NotImplementedError, Runner
+records engine_not_implemented;
 progression is LIVE, with no SAMPLE fallback. Runner discards decisions for that
 whole callback batch if any engine call raises NotImplementedError. Unavailability
 is retained in the UI log even if later ticks have no events. Other failures reject
 the API command without committing its snapshot, context, RNG, history or log.
-Direct D3/D4 buttons are read-only queries outside canonical simulation records;
+Direct D3/D4 buttons ("Ask the engine") are read-only queries outside canonical simulation
+records; D3 needs G4 aboard, so in Scenario A it is refused with that reason;
 only an explicitly selected SAMPLE mode previews fixtures. Preview results are
 never added to runner.jsonl. The runner records Decisions but never applies actions.
 

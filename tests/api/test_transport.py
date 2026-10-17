@@ -99,15 +99,42 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
                 route.abort()
 
         page.route("**/*", local_only)
+        page.set_viewport_size({"width": 1366, "height": 768})
         page.goto(server)
         page.wait_for_function("document.querySelector('#card').options.length > 0")
+        # Laptop width: no horizontal scrolling; the primary action is in the first view.
+        assert not page.evaluate("document.documentElement.scrollWidth > window.innerWidth")
+        assert page.locator("#admit button").bounding_box()["y"] < 768
+        # Keyboard: Tab reaches the primary action; arrow keys switch task tabs.
+        page.focus("#value")
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement === document.querySelector('#admit button')")
+        page.focus("#tab-evaluate")
+        page.keyboard.press("ArrowRight")
+        assert page.evaluate("document.activeElement.id") == "tab-mission"
+        assert page.locator("#mission").is_visible() and not page.locator("#evaluate").is_visible()
+        page.keyboard.press("ArrowLeft")
+        assert page.locator("#evaluate").is_visible()
         page.select_option("#card", "G4")
         page.click("#admit button")
         page.wait_for_function("document.querySelector('#decision').textContent.includes('yes_if')")
         page.fill("#value", "20")
         page.click("#admit button")
-        page.wait_for_function("document.querySelector('#decision h3').textContent.includes('no')")
+        page.wait_for_function("state.decision.verdict === 'no'")
+        assert page.locator("#decision h3").first.inner_text() == "Refused"
         assert "deck.hangar.mass" in page.locator("#decision").inner_text()
+        assert "limits the result" in page.locator(".gauge.limiting").inner_text()
+        # Invalid input is rejected visibly and leaves the session unchanged.
+        before = page.evaluate("state.final_hash")
+        page.click("#advanced summary")
+        page.fill("#cardJson", "{not json")
+        page.click('#importCard button[type="submit"]')
+        page.wait_for_function(
+            "document.querySelector('#error').textContent.startsWith('Not applied')"
+        )
+        assert page.evaluate("state.final_hash") == before
+        assert page.evaluate("state.decision.verdict") == "no"
+        page.fill("#cardJson", "")
         assert page.locator('#priority option[value="patrol"]').count() == 1
         page.select_option("#priority", "patrol")
         page.wait_for_function(
@@ -120,6 +147,8 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
             "document.querySelector('#decision').textContent.includes('No current decision')"
         )
         assert page.locator("#value").input_value() == "0.9"
+        if not page.locator("#loadCardJson").is_visible():
+            page.click("#advanced summary")
         page.click("#loadCardJson")
         judge = json.loads(page.locator("#cardJson").input_value())
         judge["id"] = "BROWSER_JUDGE"
@@ -143,11 +172,19 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         page.wait_for_function(
             "state.scenario === 'B' && state.snapshot.guests.G4.battery_pct === 30"
         )
+        assert page.locator("#mission").is_visible()  # choosing B opens the mission tab
         page.fill("#battery", "13")
         page.click('[data-event="battery_report"]')
         page.wait_for_function("state.snapshot.guests.G4.battery_pct === 13")
-        assert "battery 13%" in page.locator("#guestStates").inner_text()
-        assert "unavailable" in page.locator("#notice").inner_text()
+        assert "battery 13%" in page.locator("#guestStates").text_content()
+        # The battery report runs the real D3 engine; its result is shown, not a fixture.
+        page.wait_for_function("state.decision?.kind === 'arbitration'")
+        decision = page.locator("#decision").inner_text()
+        assert "Right of way (D3)" in decision and "computed (LIVE)" in decision
+        assert "Goes first" in decision and "SAMPLE" not in decision
+        page.click('[data-op="shedding"]')
+        page.wait_for_function("state.decision?.kind === 'shedding'")
+        assert "Degradation plan (D4)" in page.locator("#decision").inner_text()
         page.click("#step")
         page.wait_for_function("state.snapshot.t_s === 1")
         page.fill("#ticks", "3")

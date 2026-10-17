@@ -50,8 +50,8 @@ side libraries: shipos/physics (8 budgets) · statemachine (A.6 transitions) · 
 |---|---|---|---|
 | D1 admission | `engine/admission.py` | Feasible in every envelope corner; otherwise the cheapest yes-if set by Σ priority weight × capability lost | **Demonstrated** in the UI: catalogue edits and complete judge-card import |
 | D2 placement | `engine/placement.py` | Maximise the minimum normalised margin, then future flexibility, then preferred slots; report rejected alternatives | **Demonstrated** with D1 |
-| D3 right of way | `engine/arbitration.py` | Utility under the priority file, with deadline filter | **Unavailable**: stub, recorded as `engine_not_implemented` |
-| D4 degradation | `engine/shedding.py` | Throttle → standby → shed by capability lost | **Unavailable**: stub |
+| D3 right of way | `engine/arbitration.py` | Utility under the priority file, with deadline filter | **Available** from main: runs on a battery report and on demand (needs G4 aboard, so Scenario B only) |
+| D4 degradation | `engine/shedding.py` | Throttle → standby → shed by capability lost | **Available** from main: runs on a generator trip and on demand |
 | D5 crew policy | `shipos/crew/policy.py` | Deck clear and confirmed before recovery; winch lock | **Standalone** library plus [evidence-lifecycle helper](docs/CREW_LIFECYCLE.md); not called by the API or Runner; [memo](docs/scenario_C_memo.md), [policy](docs/CREW_POLICY.md) |
 | D6 Physical Account | `tools/physical_account.py` | Every number traced to Annex or a reasoned assumption | **Available**: [account](docs/PHYSICAL_ACCOUNT.md), [registry](docs/PHYSICAL_ACCOUNT_REGISTRY.md) |
 
@@ -67,8 +67,9 @@ The brief makes D1 and D3 mandatory. **D3 is still missing.**
   (`import_card`) goes through contract and reference validation, then real admission. Invalid
   cards are rejected without changing the session, and replay uses the embedded card.
 - **Scenario B:** the simulator steps at 1 Hz. The battery report (minute 8) and generator trip
-  (minute 12) update the snapshot, and you can inject them yourself. Arbitration and shedding do
-  **not** run. The minute-12 draw is 49.5 kW, so no overload is shown.
+  (minute 12) update the snapshot, and you can inject them yourself. The battery report runs
+  real D3 (G4 recovery goes before G3's survey leg) and the trip runs real D4, which answers
+  `no_action` because the 49.5 kW draw fits. No overload is invented, and no action is applied.
 - **Execution replay:** the session log is re-executed and must match byte for byte. You can
   export it as a JSON bundle or canonical JSONL.
 
@@ -77,7 +78,8 @@ combined checkpoint (PR #25) is recorded in [docs/INTEGRATION_VERIFICATION.md](d
 
 ## Limitations
 
-- D3 and D4 are stubs, so Scenario B is event progression, not arbitration or shedding.
+- D3 and D4 results are recommendations: nothing applies them to the simulated ship, and their
+  integration has only been checked on the Scenario B timeline.
 - Decisions are recorded but never applied to the simulated ship.
 - The crew policy and its lifecycle helper are libraries the API and Runner don't call yet.
   Deck "camera" evidence is simulated.
