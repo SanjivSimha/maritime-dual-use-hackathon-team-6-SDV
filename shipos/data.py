@@ -24,7 +24,7 @@ def resolve(node):
 
 
 def load_yaml(path: Path) -> dict:
-    return resolve(yaml.safe_load(path.read_text()))
+    return resolve(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 def load_ship(path: Path = DATA_DIR / "ship" / "reference_vessel.yaml") -> ShipSpec:
