@@ -197,7 +197,8 @@ refresh_cache(Path("data/env_cache/refreshed.json"), timeout_s=10)
 Refresh issues two official GETs, with explicit per-phase HTTPX timeouts, no
 application retries, and redirects disabled. An injected `httpx.Client` supports
 offline tests; an internally created client is closed on return. Both responses
-must have aligned, consecutive hourly timestamps and complete wave/SST/wind data
+must cover all 48 requested hours with aligned, consecutive timestamps and complete
+wave/SST/wind data
 in the requested units. Missing SST or any partial/error response rejects the
 refresh rather than filling values. Offline loading is more permissive about
 known missing values so it can report their limitations honestly.

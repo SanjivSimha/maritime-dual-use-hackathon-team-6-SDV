@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from shipos.sim.env import _finite, _samples
+from shipos.sim.env import EnvironmentUnavailable, _finite, _samples
 
 ENDPOINTS = {
     "marine": "https://marine-api.open-meteo.com/v1/marine",
@@ -65,7 +65,8 @@ def refresh_cache(
                 "retrieved_at": datetime.now(UTC).isoformat(),
                 "response": body,
             }
-        _samples(document, complete=True)
+        if len(_samples(document, complete=True)) != params["forecast_days"] * 24:
+            raise EnvironmentUnavailable("partial refresh horizon; existing cache retained")
         encoded = json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = None

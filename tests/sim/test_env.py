@@ -263,7 +263,9 @@ def test_six_crew_daylight_boundaries_across_days(synthetic):
     assert windows(forecast, crew=0) == ()
 
 
-@pytest.mark.parametrize("failure", ["timeout", "http_error", "partial", "units", "gap"])
+@pytest.mark.parametrize(
+    "failure", ["timeout", "http_error", "partial", "units", "gap", "short_horizon"]
+)
 def test_failed_refresh_preserves_existing_cache(tmp_path, document, failure):
     path = tmp_path / "existing.json"
     before = CACHE.read_bytes()
@@ -279,6 +281,8 @@ def test_failed_refresh_preserves_existing_cache(tmp_path, document, failure):
             if failure == "http_error":
                 return httpx.Response(503)
         body = deepcopy(document["sources"][source]["response"])
+        if failure == "short_horizon":
+            body["hourly"] = {key: values[:2] for key, values in body["hourly"].items()}
         if source == "weather" and failure == "partial":
             body["hourly"]["wind_speed_10m"][1] = None
         if source == "weather" and failure == "units":
