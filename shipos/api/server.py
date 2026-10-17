@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from shipos.api import adapter
@@ -35,6 +35,9 @@ def priority_catalog() -> dict[str, PriorityFile]:
 class Command(BaseModel):
     model_config = ConfigDict(extra="forbid")
     op: Literal[
+        "execution",
+        "confirm_deck",
+        "environment",
         "admit",
         "import_card",
         "priority",
@@ -48,6 +51,10 @@ class Command(BaseModel):
         "step",
         "replay",
     ]
+    enabled: StrictBool | None = None
+    fresh_run: StrictBool = False
+    by: str = Field(default="deck officer", min_length=1, max_length=100)
+    environment: adapter.EnvironmentConfig | None = None
     card: str | None = None
     card_json: str | None = None
     value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -72,6 +79,7 @@ class Session:
     history: list[dict] = field(default_factory=list)
     unavailable: list[dict] = field(default_factory=list)
     replay: dict | None = None
+    archives: list[dict] = field(default_factory=list)
     notice: str = "LIVE Runner ready. First step emits t=0; no decision actions are applied."
 
     @property
@@ -82,8 +90,37 @@ class Session:
 def apply(state: Session, cmd: Command) -> Session:
     # Commit only after the entire command and response succeed.
     state = deepcopy(state)
-    if cmd.op == "reset":
-        return Session(state.id)
+    if cmd.op in ("reset", "execution", "environment"):
+        if cmd.op != "reset" and not cmd.fresh_run:
+            raise ValueError("Explicit fresh_run=true is required; prior evidence will be archived")
+        archives = state.archives + [state.simulation.evidence()]
+        if cmd.op == "reset":
+            return Session(state.id, archives=archives)
+        if cmd.op == "execution" and cmd.enabled is None:
+            raise ValueError("enabled is required")
+        if cmd.op == "environment" and cmd.environment is None:
+            raise ValueError("environment configuration is required")
+        enabled = cmd.enabled if cmd.op == "execution" else state.simulation.execution
+        if enabled and state.mode != "LIVE":
+            raise ValueError("Execution requires LIVE mode; SAMPLE previews are read-only")
+        simulation = adapter.Simulation(
+            state.scenario,
+            execution=enabled,
+            environment=cmd.environment
+            if cmd.op == "environment"
+            else state.simulation.environment_config,
+            priority=state.priorities[state.priority],
+            crew=state.snapshot.crew,
+        )
+        return Session(
+            state.id,
+            simulation=simulation,
+            mode=state.mode,
+            scenario=state.scenario,
+            priority=state.priority,
+            archives=archives,
+            notice="Fresh reproducible run started; previous evidence archived.",
+        )
     required = {
         "admit": "card",
         "import_card": "card_json",
@@ -107,7 +144,11 @@ def apply(state: Session, cmd: Command) -> Session:
     context = state.simulation.runner.context
     catalogue = {**context.manifests, **context.cards}
     inputs = []
-    if cmd.op == "import_card":
+    if cmd.op == "confirm_deck":
+        if not hasattr(state.simulation.runner, "execution_status"):
+            raise ValueError("Recorded operator confirmation unavailable until executor seam lands")
+        inputs = [("operator_confirmation", {"by": cmd.by})]
+    elif cmd.op == "import_card":
         if cmd.card is not None or cmd.value is not None:
             raise ValueError("Submit either a complete card_json or a catalog card/mass edit")
         card = adapter.parse_card(cmd.card_json, catalogue)
@@ -139,10 +180,17 @@ def apply(state: Session, cmd: Command) -> Session:
     elif cmd.op in ("mode", "scenario"):
         state.mode = cmd.mode if cmd.op == "mode" else state.mode
         state.scenario = cmd.scenario if cmd.op == "scenario" else state.scenario
-        # Selecting an input scenario/mode starts a fresh replay, never relabels old evidence.
+        if state.mode == "SAMPLE" and state.simulation.execution:
+            raise ValueError("Disable execution with an explicit fresh run before SAMPLE previews")
+        # Selecting a scenario/mode starts a fresh replay and archives the previous evidence.
         return Session(
             state.id,
-            simulation=adapter.Simulation(state.scenario),
+            simulation=adapter.Simulation(
+                state.scenario,
+                execution=state.simulation.execution,
+                environment=state.simulation.environment_config,
+            ),
+            archives=state.archives + [state.simulation.evidence()],
             mode=state.mode,
             scenario=state.scenario,
             notice="Runner reset. SAMPLE applies only to explicit D3/D4 previews."
@@ -171,6 +219,7 @@ def apply(state: Session, cmd: Command) -> Session:
             context.priorities,
             "G4",
             "recovery",
+            confirm=getattr(context, "recovery_confirm", "human"),
         )
     else:
         state.decision = shedding.plan(
@@ -178,6 +227,7 @@ def apply(state: Session, cmd: Command) -> Session:
             context.manifests,
             state.snapshot,
             context.priorities,
+            protected=getattr(context, "protected", frozenset()),
         )
     if inputs or cmd.op == "step":
         records = state.simulation.advance(cmd.ticks if cmd.op == "step" else 1, inputs)
@@ -195,6 +245,8 @@ def apply(state: Session, cmd: Command) -> Session:
                 state.notice = (
                     "LIVE progression; D3/D4 engine batch unavailable. No SAMPLE substitution."
                 )
+        if state.simulation.execution:
+            state.notice = "LIVE execution enabled; inspect actual pending/applied/blocked status."
         decisions = records[-1]["decisions"]
         state.decision = Decision.model_validate(decisions[-1]) if decisions else None
     elif state.decision:
@@ -256,6 +308,13 @@ def view(state: Session) -> dict:
         "next_t_s": state.simulation.runner.next_t_s,
         "final_hash": state.simulation.runner.final_hash,
         "horizon_s": adapter.HORIZON_S,
+        "state_request_time_base": "absolute_simulation_seconds",
+        "execution": state.simulation.execution_view(),
+        "crew_policy": state.simulation.crew_view(),
+        "environment": state.simulation.environment_view(),
+        "previous_runs": [
+            {"run": i, "final_hash": e["final_hash"]} for i, e in enumerate(state.archives)
+        ],
     }
 
 
@@ -313,12 +372,17 @@ def create_app() -> FastAPI:
     async def command(sid: str, cmd: Command):
         return await execute(sid, cmd)
 
+    def archived(state, run):
+        if not 0 <= run < len(state.archives):
+            raise HTTPException(404, "Archived run not found")
+        return state.archives[run]
+
     @app.get("/api/sessions/{sid}/evidence")
-    async def evidence(sid: str):
+    async def evidence(sid: str, run: int | None = None):
         get(sid)
         async with locks[sid]:
             return JSONResponse(
-                get(sid).simulation.evidence(),
+                get(sid).simulation.evidence() if run is None else archived(get(sid), run),
                 headers={"Content-Disposition": 'attachment; filename="shipos-evidence.json"'},
             )
 
