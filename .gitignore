@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.superpowers/
+.DS_Store
+.claude/settings.local.json
+dist/
+*.egg-info/
