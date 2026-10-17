@@ -21,3 +21,4 @@ capability:
   tags: [surveillance, rf]
 installation: {where: port_only, people: 2, hours: 3}
 radar_sensitivity_loss: 0.3        # 30 % loss if own radar transmits nearby
+# ownership-check test
