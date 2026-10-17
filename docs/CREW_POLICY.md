@@ -24,13 +24,13 @@ lock = machinery_lock(guests, snapshot, "G2", "winch")  # MachineryLock
 | Result | Fields |
 |---|---|
 | `RecoveryGate` | `permitted`, `confirm` (planner value), `confirmation` (what actually happened), `blockers`, `requests` |
-| `ClearanceAdvice` | `request`, `start_by_s`, `lead_s`, `approach_s`, `late`, `blockers`, `requests` |
+| `ClearanceAdvice` | `request`, `start_by_s`, `lead_s`, `approach_s`, `late`, `blockers`, `requests`, `planner_blocker` |
 | `MachineryLock` | `locked`, `by` (e.g. `("G3.surveying",)`) |
 
 `requests` are contract `StateRequest`s from the Track A planner, with `start_s` relative to
 `snapshot.t_s`. `blockers` are codes (`deck_occupied`, `confirmation_pending`,
 `no_crew_to_clear_deck`, `no_deck_evidence`, `stale_deck_evidence`, `evidence_not_clear`,
-`no_forecast`), not prose.
+`no_forecast`, `invalid_forecast`, `recovery_state_blocked`), not prose.
 
 ## Evidence the caller supplies
 
@@ -42,8 +42,12 @@ lock = machinery_lock(guests, snapshot, "G2", "winch")  # MachineryLock
 | `DeckEvidence(t_s, deck_clear, source="simulated_camera")` | a deck camera / sensor reading. **Simulated**; there is no real camera integration | the simulator, each tick |
 | `BatteryForecast(issued_s, land_by_s)` | the drone must be on deck by `land_by_s` | the simulator's battery model / Track A deadline logic |
 
-A confirmation covers one clear-deck episode: drop it once `snapshot.ship.deck` becomes
-`occupied` again. A confirmation or forecast dated after `snapshot.t_s` is ignored. Deck evidence
+A confirmation covers one clear-deck episode. The policy is stateless and sees one snapshot, so
+it **cannot detect** that the deck was occupied in between: the caller must discard the
+`HumanConfirmation` as soon as `snapshot.ship.deck` becomes `occupied`, and a reopened deck then
+needs a new one (`test_confirmation_lifecycle_is_the_callers` models this). That test only shows
+the policy's side; enforcing the lifecycle in the API/simulator is the integration task. A
+confirmation or forecast dated after `snapshot.t_s` is ignored. Deck evidence
 counts only if `evidence.t_s == snapshot.t_s` (a reading from this tick).
 
 ## Crew levels
@@ -72,9 +76,24 @@ start_by_s = forecast.land_by_s - approach_s - lead_s
 
 and is requested once `snapshot.t_s >= start_by_s`. With 6 crew, A.6 gives 720 s to clear the
 deck plus 180 s to confirm, so the request has to go out about 18 min before touchdown. With 14
-crew it is 300 + 60 s. A forecast issued after `start_by_s` still requests clearance but sets
-`late=True`. A missing forecast requests nothing. Neither case changes the deck state:
-`recovery_gate` stays blocked until the deck is clear and confirmed. Whether the drone can still
+crew it is 300 + 60 s.
+
+- **Weather:** the planner gets `snapshot.env`. Wind or sea state beyond the recovery mode's
+  card limits (G4: 25 kn, sea state 4), or any other planner blocker, adds
+  `recovery_state_blocked` and the planner's own text in `planner_blocker`. `request` is then
+  false and `requests` empty. `lead_s` / `start_by_s` are still reported as timing information.
+- **`request` / `requests`** are advice to start deck preparation, not a feasibility verdict or an
+  authorised recovery plan. They are empty whenever any blocker other than `deck_occupied`
+  applies, or before `start_by_s`.
+- **`late=True`** means preparation starts after `start_by_s`. That happens when the forecast
+  arrived late, or when it arrived on time but was first evaluated after `start_by_s` (exactly at
+  `start_by_s` is not late). Clearance is still requested. `late` is not proof that the landing
+  deadline is missed.
+- **Forecast missing or issued after `snapshot.t_s`:** `no_forecast`. **NaN or ±infinity in
+  either timestamp:** `invalid_forecast`. Both give no request and no timing outputs.
+
+None of these change the deck state: `recovery_gate` stays blocked until the deck is clear and
+confirmed. Whether the drone can still
 land in time is Track A's deadline calculation, not this policy's. `Battery.on_deny` (ditch) is
 unchanged, and no diversion destination is invented.
 

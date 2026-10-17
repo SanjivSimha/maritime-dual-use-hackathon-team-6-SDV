@@ -3,6 +3,7 @@ the policy's own output."""
 
 import copy
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,71 @@ def test_6_confirmation_still_required(ship):
     assert gate.confirm == "human" and gate.blockers == ("confirmation_pending",)
     assert gate.requests[0].duration_s == hi(ship.transitions.confirm_s, 6)
     assert recovery_gate(ship, snap(6, DeckState.CLEAR), HumanConfirmation(NOW)).permitted
+
+
+@pytest.mark.parametrize(
+    ("offset", "request_", "late"), [(-1, False, False), (0, True, False), (1, True, True)]
+)
+def test_6_late_means_evaluated_after_start_by(ship, guests, offset, request_, late):
+    # Forecast issued well before start_by_s; only the evaluation time moves.
+    land_by = NOW + approach(guests) + lead_6(ship)  # start_by_s == NOW
+    s = snap(6).model_copy(update={"t_s": NOW + offset})
+    advice = early_clearance(ship, s, guests["G4"], BatteryForecast(NOW - 600, land_by))
+    assert advice.start_by_s == pytest.approx(NOW)
+    assert advice.request is request_ and advice.late is late
+    assert advice.blockers == ("deck_occupied",)  # late is not a missed-deadline verdict
+
+
+@pytest.mark.parametrize(
+    "forecast",
+    [BatteryForecast(issued_s=NOW, land_by_s=bad) for bad in (math.nan, math.inf, -math.inf)]
+    + [
+        BatteryForecast(issued_s=bad, land_by_s=NOW + 3600)
+        for bad in (math.nan, math.inf, -math.inf)
+    ],
+)
+def test_nonfinite_forecast_is_invalid(ship, guests, forecast):
+    advice = early_clearance(ship, snap(6), guests["G4"], forecast)
+    assert advice.blockers == ("invalid_forecast",)
+    assert not advice.request and advice.requests == () and not advice.late
+    assert advice.start_by_s is None and advice.lead_s is None
+
+
+def weather(snapshot, **env):
+    return snapshot.model_copy(update={"env": snapshot.env.model_copy(update=env)})
+
+
+@pytest.mark.parametrize(
+    ("field", "limit", "planner_text"),
+    [("wind_kn", "wind_max_kn", "wind"), ("sea_state", "sea_state_max", "sea state")],
+)
+def test_weather_beyond_card_limit_blocks_advice(ship, guests, field, limit, planner_text):
+    card_limit = getattr(guests["G4"].mode("recovery").conditions, limit)
+    s = weather(snap(6), **{field: card_limit + 2})
+    land_by = NOW + approach(guests)  # well inside the lead: would otherwise request at once
+    advice = early_clearance(ship, s, guests["G4"], BatteryForecast(NOW, land_by))
+    assert advice.blockers == ("deck_occupied", "recovery_state_blocked")
+    assert not advice.request and advice.requests == ()
+    assert planner_text in advice.planner_blocker
+    assert advice.lead_s == pytest.approx(lead_6(ship))  # timing still reported
+    within = weather(snap(6), **{field: card_limit})
+    ok = early_clearance(ship, within, guests["G4"], BatteryForecast(NOW, land_by))
+    assert ok.request and ok.planner_blocker is None
+
+
+def test_confirmation_lifecycle_is_the_callers(ship):
+    """clear -> occupied -> clear, with the caller discarding the confirmation on occupation."""
+    confirmation = HumanConfirmation(NOW)
+    assert recovery_gate(ship, snap(14, DeckState.CLEAR), confirmation).permitted
+    confirmation = None  # caller: deck occupied -> discard
+    assert not recovery_gate(ship, snap(14), confirmation).permitted
+    reopened = snap(14, DeckState.CLEAR).model_copy(update={"t_s": NOW + 600})
+    gate = recovery_gate(ship, reopened, confirmation)
+    assert not gate.permitted and gate.blockers == ("confirmation_pending",)
+    assert recovery_gate(ship, reopened, HumanConfirmation(NOW + 600)).permitted
+    # The policy sees one snapshot: an old confirmation the caller failed to discard would
+    # still be accepted. That is why discarding it is the caller's obligation.
+    assert recovery_gate(ship, reopened, HumanConfirmation(NOW)).permitted
 
 
 # --------------------------------------------------------------------------- 0 crew

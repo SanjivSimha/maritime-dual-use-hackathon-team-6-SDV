@@ -13,6 +13,7 @@ Evidence the contracts do not carry is passed in explicitly:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -39,13 +40,17 @@ NO_DECK_EVIDENCE = "no_deck_evidence"
 STALE_DECK_EVIDENCE = "stale_deck_evidence"
 EVIDENCE_NOT_CLEAR = "evidence_not_clear"
 NO_FORECAST = "no_forecast"
+INVALID_FORECAST = "invalid_forecast"
+RECOVERY_STATE_BLOCKED = "recovery_state_blocked"
 
 
 @dataclass(frozen=True)
 class HumanConfirmation:
     """A crew member confirmed the flight deck clear at `t_s`.
 
-    Valid for one clear-deck episode: the caller drops it as soon as the deck is occupied again.
+    Valid for one clear-deck episode. The policy is stateless and sees one snapshot, so it cannot
+    tell that the deck was occupied in between: the caller must discard the confirmation as soon
+    as the deck is occupied again.
     """
 
     t_s: float
@@ -82,15 +87,23 @@ class RecoveryGate:
 
 @dataclass(frozen=True)
 class ClearanceAdvice:
-    """Should deck clearance start now, ahead of a forecast recovery?"""
+    """Should deck clearance start now, ahead of a forecast recovery?
+
+    `request` / `requests` are advice to begin deck preparation, never a feasibility verdict or
+    an authorised recovery plan: they are empty whenever any blocker other than `deck_occupied`
+    applies, and `recovery_gate` still decides when recovery may start.
+    """
 
     request: bool
-    start_by_s: float | None  # latest start (sim s) that covers the A.6 lead and the approach
+    start_by_s: float | None  # latest preparation start (sim s) covering A.6 lead + approach
     lead_s: float | None  # planner ready time for the recovery state, A.6 upper bounds
     approach_s: float | None
-    late: bool  # the forecast arrived after start_by_s
+    # Preparation starts after start_by_s: the forecast arrived, or was first evaluated, too late.
+    # Not proof the landing deadline is missed; that verdict is Track A's.
+    late: bool
     blockers: tuple[str, ...]
     requests: tuple[StateRequest, ...]
+    planner_blocker: str | None = None  # plan_transition's own reason when it is infeasible
 
 
 @dataclass(frozen=True)
@@ -168,8 +181,10 @@ def early_clearance(
 
     lead_s is the planner's ready time for the drone's recovery conditions (deck clear, then
     human confirmation, concurrently with speed / course), on upper bounds. approach_s is the
-    activity's duration from the card. A missing or future-dated forecast requests nothing; a
-    late one requests clearance at once but never makes the deck ready.
+    activity's duration from the card. The planner sees the snapshot's weather, so wind or sea
+    state beyond the card's limits blocks the advice. A missing, future-dated or non-finite
+    forecast requests nothing; a late one requests clearance at once but never makes the deck
+    ready.
     """
     act = drone.activity(activity)
     mode = drone.mode(act.mode)
@@ -178,6 +193,10 @@ def early_clearance(
     if not _humans_can_confirm(ship, snapshot.crew):
         blockers = (NO_CREW_TO_CLEAR_DECK,) if occupied else ()
         return ClearanceAdvice(False, None, None, approach_s, False, blockers, ())
+    if forecast is not None and not (
+        math.isfinite(forecast.issued_s) and math.isfinite(forecast.land_by_s)
+    ):
+        return ClearanceAdvice(False, None, None, approach_s, False, (INVALID_FORECAST,), ())
     if forecast is None or forecast.issued_s > snapshot.t_s:
         return ClearanceAdvice(False, None, None, approach_s, False, (NO_FORECAST,), ())
 
@@ -186,20 +205,25 @@ def early_clearance(
         snapshot.ship,
         mode.conditions,
         snapshot.crew,
+        env=snapshot.env,
         confirm="human",
         deck_machinery=mode.deck_machinery,
     )
     start_by_s = forecast.land_by_s - approach_s - plan.ready_s
-    request = occupied and snapshot.t_s >= start_by_s
+    blockers = (DECK_OCCUPIED,) if occupied else ()
+    if not plan.feasible:
+        blockers += (RECOVERY_STATE_BLOCKED,)
+    request = occupied and plan.feasible and snapshot.t_s >= start_by_s
     deck_steps = [s for s in plan.steps if s.variable in ("deck", "confirm:deck")]
     return ClearanceAdvice(
         request=request,
         start_by_s=start_by_s,
         lead_s=plan.ready_s,
         approach_s=approach_s,
-        late=forecast.issued_s > start_by_s,
-        blockers=(DECK_OCCUPIED,) if occupied else (),
+        late=snapshot.t_s > start_by_s,
+        blockers=blockers,
         requests=_requests(deck_steps) if request else (),
+        planner_blocker=plan.blocker,
     )
 
 
