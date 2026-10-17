@@ -260,8 +260,13 @@ function renderMissionStatus() {
 
   const prep = node("div");
   const requested = (rec?.state_requests ?? []).map(r => `${r.variable} → ${r.to} ${requestTime(r.start_s, state.state_request_time_base)} for ${number(r.duration_s)} s`);
-  prep.append(node("strong", "Requested by the engine: "), requested.length ? items(requested) : na("none"));
-  prep.append(node("strong", "Pending in the simulator: "),
+  const part = (title, content) => {
+    const div = node("div");
+    div.append(node("strong", title), content);
+    prep.append(div);
+  };
+  part("Requested by the engine: ", requested.length ? items(requested) : na("none"));
+  part("Pending in the simulator: ",
     status ? listOr(status.pending, "none") : na(exec ? "not reported" : "not reported by this server"));
   row("Requested / pending preparation", "k-prep", prep);
 
