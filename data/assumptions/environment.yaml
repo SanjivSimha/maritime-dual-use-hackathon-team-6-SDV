@@ -1,0 +1,31 @@
+class: Environment
+assumptions:
+  - id: environment.sample_hold_s
+    value: 3600
+    unit: s
+    range: [3600, 3600]
+    why: Hourly samples are held constant only between consecutive known hourly endpoints. No interpolation across missing hours or extension past the final sample.
+    source: B3 demonstration approximation; Open-Meteo hourly APIs
+  - id: environment.cache_max_age_s
+    value: 86400
+    unit: s
+    range: [0, 172800]
+    why: Reject a forecast downloaded more than one day before the explicit scenario start unless archived replay is explicitly requested. This is a demo freshness policy, not a provider guarantee.
+    source: B3 demonstration policy
+  - id: environment.daylight_start_hour
+    value: 7
+    unit: local hour
+    range: [7, 7]
+    why: PLAN B3 restricts physical handling with six crew to local 07:00-19:00. This clock rule is not astronomical daylight.
+    source: docs/PLAN.md section 4 B3
+  - id: environment.daylight_end_hour
+    value: 19
+    unit: local hour
+    range: [19, 19]
+    why: Six-crew operations must finish by 19:00 local; finishing exactly at 19:00 is allowed.
+    source: docs/PLAN.md section 4 B3
+  - id: environment.sea_state_proxy
+    value: WMO 3700 height guidance applied to model significant wave height; exact bounds use lower code
+    unit: convention
+    why: The contract takes a sea-state code while Open-Meteo supplies significant wave height. This proxy does not represent a visual sea-state observation or maximum individual wave height.
+    source: https://www.nodc.noaa.gov/gtspp/document/codetbls/wmocodes/table3700.html
