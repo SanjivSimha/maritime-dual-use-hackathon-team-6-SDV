@@ -16,9 +16,18 @@ does not infer terminal-mode semantics for every card.
 There is no timeout or release on crew/priority changes, KEEP/DENY, blocked execution
 or missing confirmation. **A winner can remain protected indefinitely.** Protected
 non-PROCEED actions (including DEFER), holds, external schedule overrides, conflicting
-state requests and mode tasks other than `declared_continuation` remain blocked.
-**A protected `declared_resume` can remain blocked indefinitely.** Main/Sanjiv must
-resolve this provisional policy; exact DEFER metadata does not override protection.
+state requests and non-continuation mode tasks without a valid internal resume
+approval remain blocked.
+An internal resume now has a narrow exception only when the controller can trace
+it to an applied chosen pause/suspend. Its task-bound approval must match the original
+manifest, activity, target mode, declared earliest resume, elapsed/rerun semantics and
+exact hold episode. A source label alone grants no permission. All existing physical,
+interlock, weather, crew, timing and non-interruptibility checks still apply.
+
+**Protection can still be retained indefinitely, and unapproved/stale resumes or
+resumes with unsatisfied prerequisites can remain blocked indefinitely.** Main/Sanjiv
+must resolve the broader provisional policy. Neither resume approval nor exact DEFER
+metadata releases protection or decides a new lifetime rule.
 
 ## Public integration interface
 
@@ -37,8 +46,14 @@ or any Track A signature. With execution disabled these defaults retain old call
 
 `execution_status` contains `enabled`, `pending`, `applied`, `blocked`, `crew_gate`,
 protected IDs, reservations, anchored deadlines, supplied forecasts, shedding caps,
-crew evidence and generated-schedule identities. `pending` includes absolute due
-seconds, request start/duration, dependencies and chosen action payloads. `applied`
+crew evidence and generated-schedule identities. While a pause-generated resume is
+pending, `resume_approvals` contains version-1 receipts keyed by the internally bound
+task IDs. Each receipt identifies the applied origin task, manifest SHA-256, activity,
+hold episode, earliest resume and elapsed/rerun semantics. A receipt transfers from
+its internal resume task to the prepared mode task, then is consumed when that task
+succeeds. It is reconstructed from applied execution, never trusted from replay input;
+status dictionaries remain defensive evidence rather than a task-injection API.
+`pending` includes absolute due seconds, request start/duration, dependencies and chosen action payloads. `applied`
 is the completed-task audit for this run. `blocked` includes persistent semantic
 blockers and current task waits; task waits are refreshed each tick. It is evidence,
 not a way to edit the queue. Returned dictionaries and snapshots are defensive copies.
@@ -103,8 +118,13 @@ non-actuating semantic blocker. All execution times must fit the simulator's 1 H
 - keep preserves the incumbent clock. proceed starts a uniquely declared activity
   after request dependencies, action offset, actual conditions and crew permission.
 - pause/suspend use the installed activity's matching PreemptOption, hold mode,
-  window, resume delay and rerun semantics. Resume preparation uses the existing
-  Track A planner; it does not invent an immediate return to surveying or charging.
+  window, resume delay and rerun semantics. Only after that chosen action applies does
+  the controller create a task-bound ResumeApproval. Root and prepared mode tasks must
+  still identify that manifest, original activity, target, earliest time and hold entry.
+  Resume preparation uses the existing Track A planner; its request dependencies and
+  the complete mode checks remain required. An externally labelled `declared_resume`
+  task without this lineage remains blocked. This does not invent an immediate return
+  to surveying/charging or change the winner-protection release predicate.
 - throttle/standby/shed enter the explicit target mode at the action offset and hold
   its power ceiling for the existing `shed.horizon_min` planning horizon. Future higher
   modes wait under that cap; no automatic post-cap restoration is invented.
@@ -178,6 +198,35 @@ Controlled synthetic contract-edge tests explicitly label their inputs. The sepa
 D4 tests create declared future charging inputs locally and invoke the real planner;
 these are not presented as baseline B or real weather evidence.
 
+## Reachable protected-resume regression (synthetic card inputs, real D3)
+
+This is a controlled installed-card variant, **not baseline Scenario B**. G4 starts in
+standby; its recovery activity declares 15 minutes and a conditional exclusion against
+G3 holding. Launch remains compatible with that hold. Other baseline ship/card inputs
+are retained. No task is injected and neither decision is fabricated.
+
+1. At t=0, report G4 battery 30 and call real arbitration for its declared launch.
+   D3 selects G3 pause plus G4 proceed. Acoustic delivery completes at 60; the controller
+   applies the chosen pause and generates G3's resume intent for 900.
+2. Operator confirmation at 360 permits actual launch; its declared completion enters
+   flying at 480 and releases G4 protection under the existing predicate.
+3. At 600, report battery 18 and call real arbitration for the variant's recovery.
+   The hold interlock and 15-minute approach yield the real deny/risk outcome; G3 is
+   the protected winner. No successful recovery or landing is fabricated.
+4. At 900, the internal resume generates return preparation. It takes until 1200 to
+   reach 3 kn, steady course and quiet. On accepted commit 89e339f the final mode task
+   remained blocked as protected_winner, despite being the approved internal resume.
+5. The scoped exception now permits that exact task at 1200 to restart survey_leg with
+   its declared rerun clock. G3 **remains protected**. An external standby schedule at
+   1201 still rejects. Machinery, high wind and crew-invalidated preparation variants
+   still block; valid interlock clearance permits the same approved task to retry.
+
+`tests/sim/test_protected_resume.py` exercises the actual public Runner and real D3
+calls for positive reachability and byte-identical replay. Separate negative guard
+unit tests reject an unregistered task with a forged source label, changed payload,
+changed manifest, an early time and a different mode/hold episode. Those isolated
+negative tests do not substitute for the real positive execution path above.
+
 ## Exact deferral example (synthetic consumer input)
 
 Given schedule `[(20, charging), (100, charging), (200, standby)]`, a chosen D4 action
@@ -203,10 +252,14 @@ and controller evidence in every tick. Operator/forecast inputs are recorded at 
 exact ticks and reinjected automatically on execution replay. No cache path, network
 request, computer timezone or wall clock is read during stepping, reset or replay.
 Same compatible code, callback and assumption registry remain required; this is not
-an independently portable executable. Old execution records that relied on DEFER without
+an independently portable executable. Version-1 resume receipt evidence is additive
+inside the existing execution-v3 record; it changes execution bytes for runs with
+pending pause/resume lineage. Such records require this compatible controller and are
+reconstructed deterministically rather than accepted as permission. Observation v1/v2
+bytes remain unchanged. Old execution records that relied on DEFER without
 exact facts require their original compatible consumer; this strict consumer rejects
 those inputs. Observation v1/v2 behavior and the no-deferral execution example below
-remain unchanged. Missing forecast weather coverage still fails
+remain semantically valid. Missing forecast weather coverage still fails
 transactionally; a reservation is not proof of future resource feasibility.
 
 Run from the repository root with `py -m uv run --offline python`, then paste:

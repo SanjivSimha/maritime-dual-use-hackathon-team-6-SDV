@@ -19,6 +19,7 @@ from shipos.crew import (
 )
 from shipos.engine.arbitration import deadline_min
 from shipos.sim.deferral import DeferralError, apply_deferral, capture_deferral
+from shipos.sim.resume import ResumeApproval, manifest_hash
 from shipos.statemachine import conflicts, plan_transition
 
 
@@ -48,6 +49,7 @@ class Execution:
     done: dict[int, float] = field(default_factory=dict)
     boundaries: set[tuple] = field(default_factory=set)
     generated: dict = field(default_factory=dict)
+    _resume_approvals: dict[int, ResumeApproval] = field(default_factory=dict)
     sequence: int = 0
     status: dict = field(default_factory=dict)
 
@@ -84,6 +86,11 @@ class Execution:
             "generated_schedule": deepcopy(self.generated),
             "crew_evidence": asdict(self.evidence),
         }
+        if self._resume_approvals:
+            self.status["resume_approvals"] = {
+                str(task_id): approval.record()
+                for task_id, approval in sorted(self._resume_approvals.items())
+            }
         return snap
 
     def event(self, event, data, context):
@@ -394,7 +401,19 @@ class Execution:
             return "active shedding cap blocks higher-power mode"
         return None
 
-    def prepare(self, gid, mode, activity, data, context, *, source, elapsed=0, retry=False):
+    def prepare(
+        self,
+        gid,
+        mode,
+        activity,
+        data,
+        context,
+        *,
+        source,
+        elapsed=0,
+        retry=False,
+        parent_resume_task=None,
+    ):
         snap = WorldSnapshot.model_validate(data)
         wanted = context.manifests[gid].mode(mode)
         result = plan_transition(
@@ -430,7 +449,7 @@ class Execution:
             for s in result.steps
         ]
         ids = self.requests(requests, data, plan=self.sequence)
-        self.add(
+        mode_task = self.add(
             "mode",
             snap.t_s + result.ready_s,
             deps=ids,
@@ -440,6 +459,8 @@ class Execution:
             elapsed_s=elapsed,
             source=source,
         )
+        if parent_resume_task in self._resume_approvals:
+            self._resume_approvals[mode_task] = self._resume_approvals[parent_resume_task]
 
     def advance(self, data, context, entered, transitions):
         now = data["t_s"]
@@ -547,6 +568,7 @@ class Execution:
                 self.block(reason, task=task["id"])
                 continue
             self.pending.remove(task)
+            self._resume_approvals.pop(task["id"], None)
             self.done[task["id"]] = now
             self.applied.append({"task": task["id"], "kind": task["kind"], "t_s": now})
         # Explicit battery forecasts only: never extrapolate a fresh forecast each tick.
@@ -702,6 +724,13 @@ class Execution:
             self.observe(data, context)
             return None
         if task["kind"] in ("resume", "prepare"):
+            approval = self._resume_approvals.get(task["id"])
+            if task["kind"] == "resume" and approval is None:
+                return "unapproved_resume_task"
+            if approval is not None:
+                reason = approval.blocker(task, data, context.manifests[task["guest"]], entered)
+                if reason:
+                    return reason
             return self.prepare(
                 task["guest"],
                 task["mode"],
@@ -711,12 +740,22 @@ class Execution:
                 source=task.get("source", "declared_resume"),
                 elapsed=task["elapsed_s"],
                 retry=True,
+                parent_resume_task=task["id"] if approval is not None else None,
             )
         if task["kind"] == "mode":
             gid, mode = task["guest"], task["mode"]
             rt = data["guests"][gid]
             active = context.manifests[gid].mode(rt["mode"])
-            if gid in self.protected and task["source"] != "declared_continuation":
+            approval = self._resume_approvals.get(task["id"])
+            if approval is not None:
+                reason = approval.blocker(task, data, context.manifests[gid], entered)
+                if reason:
+                    return reason
+            if (
+                gid in self.protected
+                and task["source"] != "declared_continuation"
+                and approval is None
+            ):
                 return "protected_winner"
             if (
                 not active.interruptible
@@ -793,13 +832,24 @@ class Execution:
             return reason
         if action.kind in ("pause", "suspend"):
             original = manifest.activity(task["resume_activity"])
-            self.add(
+            resume_task = self.add(
                 "resume",
                 task["resume_s"],
                 guest=gid,
                 mode=original.mode,
                 activity=original.name,
                 elapsed_s=task["elapsed_s"],
+            )
+            self._resume_approvals[resume_task] = ResumeApproval(
+                origin_task=task["id"],
+                guest=gid,
+                activity=original.name,
+                mode=original.mode,
+                hold_mode=action.to_mode,
+                hold_entered_s=now,
+                not_before_s=task["resume_s"],
+                elapsed_s=task["elapsed_s"],
+                manifest_sha256=manifest_hash(manifest),
             )
         if action.kind in ("throttle", "standby", "shed"):
             self.caps[gid] = {
