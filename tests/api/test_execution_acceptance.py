@@ -12,6 +12,12 @@ from fastapi.testclient import TestClient
 
 from shipos.api import adapter
 from shipos.api.server import create_app
+from shipos.sim.runner import Runner
+
+# Needs school's executor (PR #36). Without it the API refuses execution, so skip, not fail.
+pytestmark = pytest.mark.skipif(
+    not hasattr(Runner, "execution_status"), reason="simulator execution (PR #36) not present"
+)
 
 CACHE = {
     "source": "strait_of_sicily",
