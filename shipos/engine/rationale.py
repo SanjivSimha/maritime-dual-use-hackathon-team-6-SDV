@@ -94,7 +94,13 @@ def describe(b: ConstraintResult) -> str:
     if head in ("deck", "mast"):
         if "occupied_by" in f:
             return f"{tail} is taken by the {f['occupied_by']}"
-        return f"{tail} has room for {cap} {u} but {_who(b.contributors, u)} need {dem}"
+        if b.ok:
+            users = ", ".join(sorted(b.contributors))
+            if b.margin == 0:
+                return f"{tail} is now full ({users})"
+            return f"{tail} keeps {spare} of {cap} {u} free ({users})"
+        names = " and ".join(sorted(b.contributors))
+        return f"{tail} holds {cap} {u} but {names} need {dem}"
     if r.startswith("relation.excludes."):
         return f"{tail.split('.')[-1]} excludes {f.get('target')}: {f.get('reason')}"
     if r.startswith("relation.requires."):
@@ -189,6 +195,16 @@ def _gain(d: Decision) -> float | None:
     return next((c.amount for c in d.costs if c.guest == "card"), None)
 
 
+def _where(gid: str, p, chosen) -> str:
+    slots = ", ".join(v if k == "body" else f"{k} on {v}" for k, v in p.slots.items())
+    tolerated = chosen is not None and any(
+        a.guest == gid and a.facts.get("preferred") == "no" for a in chosen.actions
+    )
+    return f"{gid} on {slots}, {p.line.value} line" + (
+        " (tolerated, not preferred)" if tolerated else ""
+    )
+
+
 def render(d: Decision) -> str:
     b = d.binding
     clause = describe(b) if b is not None else "no constraint is close to its limit"
@@ -222,14 +238,12 @@ def render(d: Decision) -> str:
         return f"Not now: {clause}{when}{alt}."
 
     if d.kind == DecisionKind.PLACEMENT:
-        p = d.placement.get(s)
-        where = (
-            ", ".join(f"{k} on {v}" for k, v in p.slots.items()) + f", {p.line.value} line"
-            if p
-            else "nowhere"
-        )
+        shown = [s] if s in d.placement else sorted(d.placement)
+        where = "; ".join(_where(g, d.placement[g], d.chosen) for g in shown) or "nowhere"
         n = len(d.alternatives)
-        return f"Place {s}: {where}; tightest, {clause}; {n} alternatives rejected."
+        if d.verdict == Verdict.NO:
+            return f"No placement for {s}: {clause}; {n} alternatives also fail."
+        return f"Place {where}; tightest, {clause}; {n} alternatives rejected."
 
     if d.kind == DecisionKind.ARBITRATION:
         plan = _actions(d.chosen.actions, sep=", ") if d.chosen else ""

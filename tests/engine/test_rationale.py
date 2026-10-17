@@ -113,7 +113,7 @@ def test_mass_and_deck_bindings():
         contributors={"G3": 2, "G5": 1},
     )
     s = render(admission(Verdict.NO, d))
-    assert "bay1" in s and "G3" in s and "G5" in s
+    assert "bay1 holds 2 units but G3 and G5 need 3" in s
 
 
 def test_arbitration_states_deadline_and_cost_to_loser():
