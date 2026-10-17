@@ -2,3 +2,4 @@
 
 Pure and deterministic: no wall clock, randomness or I/O.
 """
+# ownership-check test

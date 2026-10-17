@@ -643,3 +643,4 @@ class Decision(Frozen):
     rationale: str = ""
     latency_ms: float | None = None
     t_s: float = 0.0
+# ownership-check test

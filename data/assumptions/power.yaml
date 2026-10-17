@@ -52,3 +52,4 @@ assumptions:
     unit: bool
     why: Needed for line_lost_on_trip; without a bus-tie, guests on the lost line would lose power at the trip.
     source: invented
+# ownership-check test
