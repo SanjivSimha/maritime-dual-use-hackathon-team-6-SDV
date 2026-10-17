@@ -51,7 +51,7 @@ Tested interaction sequence:
 3. Reset restores LIVE A, original inputs, seed 0, empty proposed cards/history,
    initial runner log/hash, priority and crew. Selecting a scenario or preview mode
    also starts a fresh runner and replay. Mode-only changes preserve the selected
-   scenario: B â†’ SAMPLE â†’ LIVE remains B, with a fresh B baseline each time.
+   scenario: B Ã¢â€ â€™ SAMPLE Ã¢â€ â€™ LIVE remains B, with a fresh B baseline each time.
    Explicit Reset still restores A. B's documented YAML seed is 6.
 4. Select B (LIVE simulator), enter battery report 13, inject battery report.
    G4's actual snapshot percentage changes at t=0; its mode remains flying.
@@ -174,3 +174,12 @@ review because the API key was absent. A green job alone is not merge approval.
 Current executor dependency #36 is still contract-only; enabling execution returns
 an explicit unavailable error until finished code is imported and verified. There
 is no substitute action-applier in this API. Track A/shared blockers are issue #39.
+
+
+Request-time-base labels are explicit: Decision.state_requests use absolute simulation
+seconds (top-level state_request_time_base), while crew_policy.requests use offsets
+relative to the response snapshot (crew_policy.request_time_base=snapshot_relative).
+The API never applies crew preparation requests. Executor integration must consume
+only supported, unambiguous producer semantics. D3 protection is now forwarded from
+the public context; the lifetime must come from the executor's reviewed policy.
+Human planning requirements are never treated as received operator confirmation.

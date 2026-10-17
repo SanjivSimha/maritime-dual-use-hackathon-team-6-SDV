@@ -200,7 +200,9 @@ class Simulation:
     def crew_view(self):
         status = self.execution_view()["status"]
         if self.execution and status and status.get("crew_gate") is not None:
-            return deepcopy(status["crew_gate"])
+            result = deepcopy(status["crew_gate"])
+            result["request_time_base"] = "snapshot_relative"
+            return result
         evidence = lifecycle.CrewEvidence()
         records = [json.loads(line)["record"] for line in self.runner.jsonl.splitlines()]
         initial = WorldSnapshot.model_validate(records[0]["initial"])
@@ -220,6 +222,7 @@ class Simulation:
             "confirmation": gate.confirmation,
             "blockers": list(gate.blockers),
             "requests": [r.model_dump(mode="json") for r in gate.requests],
+            "request_time_base": "snapshot_relative",
         }
 
     def environment_view(self):
@@ -269,7 +272,9 @@ class Simulation:
 
     def advance(self, ticks=1, inputs=()):
         if not 1 <= ticks <= MAX_TICKS:
-            raise ValueError(f"Use 1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“{MAX_TICKS} ticks per command")
+            raise ValueError(
+                f"Use 1ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ{MAX_TICKS} ticks per command"
+            )
         if self.runner.next_t_s + ticks - 1 > HORIZON_S:
             raise ValueError(
                 "Demo horizon ends at 720 s; operational prerequisites are unavailable"
