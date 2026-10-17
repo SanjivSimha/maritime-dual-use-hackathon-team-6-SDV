@@ -39,6 +39,18 @@ const RESOURCES = {
   mast: "Mast positions", mass: "Mass and stability", data: "Data links",
   compute: "Compute", time: "Response time",
 };
+// Runtime controls proposed for main's API. A control is enabled only when the server's own
+// OpenAPI schema offers its command AND this UI is wired to that command's published payload.
+// Nothing here guesses a payload or a response.
+const RUNTIME = {
+  execution: "Simulated execution",
+  confirm_deck: "Operator deck confirmation",
+  environment: "Cached environment selection",
+};
+// Wired to the payloads published in PR #37 (runtime API v2).
+const WIRED = new Set(["execution", "confirm_deck", "environment"]);
+let serverOps;  // undefined: checking; null: unreadable; array: Command.op values
+
 const PRIORITY_NAMES = {survey_primary: "Survey", sar_primary: "Search and rescue", patrol: "Patrol"};
 
 async function command(cmd) {
@@ -57,6 +69,20 @@ async function command(cmd) {
 }
 
 function syncControls() {
+  // Runtime controls always show what the server reports, so a rejected command leaves no
+  // half-applied control behind.
+  $("execution").checked = Boolean(state.execution?.enabled);
+  const env = state.environment?.configuration;
+  if (env) {
+    $("environment").value = env.source;
+    if (env.source !== "scenario") {
+      if (env.timezone_offset_min != null) $("envTz").value = env.timezone_offset_min;
+      if (env.scenario_start) $("envStart").value = env.scenario_start.slice(0, 16);
+      $("envLayered").checked = Boolean(env.layered_water);
+      $("envStale").checked = Boolean(env.allow_stale);
+    }
+  }
+  $("envCache").disabled = $("environment").value === "scenario";
   $("mode").value = state.mode;
   $("scenario").value = state.scenario;
   $("crew").value = state.snapshot.crew;
@@ -95,6 +121,179 @@ function render(data) {
   renderLayout();
   renderDecision(state.decision);
   renderLog();
+  renderMissionStatus();
+  renderEnvironment();
+  renderPreviousRuns();
+}
+
+function tzLabel(min) {
+  const a = Math.abs(min);
+  return `UTC${min < 0 ? "−" : "+"}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")}`;
+}
+
+function renderEnvironment() {
+  const el = $("environmentView");
+  el.replaceChildren();
+  const env = state.environment;
+  if (!env || typeof env !== "object") return;
+  const row = (label, value) => el.append(node("dt", label), node("dd", value));
+  const c = env.configuration ?? {};
+  row("Weather source", c.source === "scenario" ? "Scenario default (no cached forecast)" : c.source ?? "not reported");
+  if (c.source && c.source !== "scenario") {
+    row("Scenario start", `${c.scenario_start ?? "not reported"}${c.timezone_offset_min == null ? "" : ` (${tzLabel(c.timezone_offset_min)})`}`);
+    row("Layered water / stale allowed", `${c.layered_water ? "yes" : "no"} / ${c.allow_stale ? "yes" : "no"}`);
+  }
+  const p = env.provenance;
+  row("Provenance", p
+    ? `${p.kind ?? "unknown"} cache${p.stale ? " · STALE" : ""} · retrieved ${p.retrieved_at ?? "time not reported"} · sources: ${Object.keys(p.sources ?? {}).join(", ") || "none listed"}`
+    : "none (no cached forecast in use)");
+  const dd = node("dd");
+  const ops = Object.entries(env.windows ?? {});
+  if (!ops.length) dd.append(node("span", "none computed", "na"));
+  for (const [op, list] of ops) {
+    const text = Array.isArray(list) && list.length
+      ? list.map(w => `t = ${number(w.start_s)}–${number(w.end_s)} s (latest start ${number(w.latest_start_s)} s)`).join("; ")
+      : "no eligible window in the forecast";
+    dd.append(node("div", `${op.replace("_", " ")}: ${text}`));
+  }
+  el.append(node("dt", "Installation windows (conditional planning eligibility only; not permission)"), dd);
+}
+
+function renderPreviousRuns() {
+  const runs = Array.isArray(state.previous_runs) ? state.previous_runs : [];
+  $("previousRuns").hidden = runs.length === 0;
+  $("previousCount").textContent = runs.length;
+  $("previousList").replaceChildren(...runs.map(r => {
+    const li = node("li");
+    const a = node("a", `Run ${r.run} evidence`);
+    a.href = `/api/sessions/${state.id}/evidence?run=${encodeURIComponent(r.run)}`;
+    a.setAttribute("download", `shipos-evidence-run-${r.run}.json`);
+    li.append(a, ` · hash ${short(r.final_hash)}`);
+    li.title = r.final_hash ?? "";
+    return li;
+  }));
+}
+
+function capabilityReason(op) {
+  if (serverOps === undefined) return "checking what this server offers";
+  if (serverOps === null) return "the server's capabilities could not be read";
+  if (!serverOps.includes(op)) return "this server does not offer it yet";
+  if (!WIRED.has(op)) return "the server offers it, but this page is not wired to its published payload yet";
+  return null;
+}
+
+function applyCapabilities() {
+  document.querySelectorAll("[data-capability]").forEach(el => {
+    const reason = capabilityReason(el.dataset.capability);
+    el.disabled = reason !== null;
+    el.title = reason ? `Unavailable: ${reason}` : "";
+  });
+  $("capabilityNotes").replaceChildren(...Object.entries(RUNTIME)
+    .filter(([op]) => capabilityReason(op))
+    .map(([op, label]) => node("li", `${label} unavailable: ${capabilityReason(op)}.`)));
+  const env = capabilityReason("environment");
+  $("environmentStatus").textContent = env
+    ? `Unavailable: ${env}. Installation-window eligibility: not reported.`
+    : "";
+  if (state) renderMissionStatus();
+}
+
+async function loadCapabilities() {
+  try {
+    const response = await fetch("/openapi.json");
+    if (!response.ok) throw new Error();
+    const schema = await response.json();
+    serverOps = schema?.components?.schemas?.Command?.properties?.op?.enum ?? [];
+  } catch { serverOps = null; }
+  applyCapabilities();
+}
+
+// Five things a mission operator must not confuse, plus the current simulated state.
+// Each row shows only what the server reported; a verdict never implies execution or permission.
+function describe(item) {
+  if (item == null) return "unspecified";
+  if (typeof item !== "object") return String(item);
+  if (item.kind && item.guest) {
+    const reason = item.reason ?? item.blocker ?? item.why;
+    return `${actionText(item)}${reason ? ` · ${reason}` : ""}`;
+  }
+  return Object.entries(item)
+    .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ");
+}
+
+function renderMissionStatus() {
+  const el = $("missionStatus");
+  const snap = state.snapshot;
+  const rec = ["arbitration", "shedding"].includes(state.decision?.kind) ? state.decision
+    : [...state.history].reverse().map(h => h.decision).find(d => ["arbitration", "shedding"].includes(d.kind));
+  const exec = state.execution;
+  const status = exec?.status && typeof exec.status === "object" ? exec.status : null;
+  const crew = state.crew_policy;
+  const na = text => node("span", text, "na");
+  const items = values => {
+    const ul = node("ul");
+    ul.append(...values.map(v => node("li", v)));
+    return ul;
+  };
+  const row = (label, cls, ...content) => {
+    el.append(node("dt", label, cls));
+    const dd = node("dd");
+    dd.append(...content);
+    el.append(dd);
+  };
+  const listOr = (values, empty) =>
+    Array.isArray(values) && values.length ? items(values.map(describe)) : na(empty);
+  el.replaceChildren();
+  row("Current simulated state", "k-state", `t = ${number(snap.t_s)} s · ${snap.platform.gensets_online} generator(s) · deck ${snap.ship.deck} · ` +
+    Object.entries(snap.guests).map(([id, rt]) => `${id} ${rt.mode}${rt.battery_pct == null ? "" : ` (${number(rt.battery_pct)}%)`}`).join(", "));
+
+  if (rec) {
+    const [label] = VERDICTS[rec.verdict] ?? [rec.verdict];
+    const lines = [`${KINDS[rec.kind] ?? rec.kind}: ${label}`];
+    if (rec.winner) lines.push(`Goes first: ${rec.winner}; yields: ${rec.loser ?? "none"}`);
+    for (const c of rec.costs ?? []) lines.push(`${c.guest === rec.loser ? "Losing mission cost" : "Cost"}: ${c.guest} ${number(c.amount)} ${c.unit} (${c.what})`);
+    for (const a of rec.chosen?.actions ?? []) lines.push(`Recommended: ${actionText(a)}`);
+    row("Engine recommendation", "k-rec", items(lines));
+  } else {
+    row("Engine recommendation", "k-rec", na("No D3/D4 recommendation yet: report the battery, trip a generator or ask the engine"));
+  }
+
+  const prep = node("div");
+  const requested = (rec?.state_requests ?? []).map(r => `${r.variable} → ${r.to} ${requestTime(r.start_s, state.state_request_time_base)} for ${number(r.duration_s)} s`);
+  const part = (title, content) => {
+    const div = node("div");
+    div.append(node("strong", title), content);
+    prep.append(div);
+  };
+  part("Requested by the engine: ", requested.length ? items(requested) : na("none"));
+  part("Pending in the simulator: ",
+    status ? listOr(status.pending, "none") : na(exec ? "not reported" : "not reported by this server"));
+  row("Requested / pending preparation", "k-prep", prep);
+
+  if (crew && typeof crew === "object") {
+    const lines = [
+      `Confirmation required from: ${crew.confirm ?? "not reported"}`,
+      `Confirmation status: ${crew.confirmation ?? "not reported"}`,
+      `Recovery permitted by crew policy: ${crew.permitted === true ? "yes" : crew.permitted === false ? "no" : "not reported"}`,
+    ];
+    if (crew.confirm === "automatic") lines.push("Based on simulated deck-camera evidence (no real camera)");
+    if (Array.isArray(crew.blockers) && crew.blockers.length) lines.push(`Blockers: ${crew.blockers.join(", ")}`);
+    for (const r of crew.requests ?? []) {
+      lines.push(`Crew request: ${r?.variable ? `${r.variable} → ${r.to} ${requestTime(r.start_s, crew.request_time_base)} for ${number(r.duration_s)} s` : describe(r)}`);
+    }
+    row("Operator confirmation", "k-confirm", items(lines));
+  } else {
+    row("Operator confirmation", "k-confirm", na("Not reported by this server"));
+  }
+
+  let applied;
+  if (status) applied = listOr(status.applied, "none applied yet");
+  else if (exec && exec.enabled === false) applied = na("None: simulated execution is off; decisions are recorded only");
+  else if (exec) applied = na("Not reported: execution status unavailable");
+  else applied = na(serverOps && !serverOps.includes("execution")
+    ? "None: this server records decisions without applying them" : "Not reported");
+  row("Applied simulated action", "k-applied", applied);
+  row("Blocked action and reason", "k-blocked", status ? listOr(status.blocked, "none") : na("Not reported"));
 }
 
 function renderAboard(snap) {
@@ -154,6 +353,13 @@ function placementChanges(d) {
   }).map(([gid, p]) => [gid, p, state.snapshot.guests[gid] ? "moved" : "new"]);
 }
 
+// Request times are rendered on the basis the server declares; never assumed.
+function requestTime(start, base) {
+  if (base === "absolute_simulation_seconds") return `at t = ${number(start)} s`;
+  if (base === "snapshot_relative") return `at +${number(start)} s from this snapshot`;
+  return `starting ${number(start)} s (time basis not reported)`;
+}
+
 function list(title, items, parent) {
   if (!items.length) return;
   parent.append(node("h4", title));
@@ -211,7 +417,7 @@ function renderDecision(d) {
   }
   list("Costs", (d.costs ?? []).map(c => `${c.guest}: ${number(c.amount)} ${c.unit} (${c.what})`), details);
   list("Requested ship state changes", (d.state_requests ?? []).map(r =>
-    `${r.variable} → ${r.to} at +${number(r.start_s)} s for ${number(r.duration_s)} s`), details);
+    `${r.variable} → ${r.to} ${requestTime(r.start_s, state.state_request_time_base)} for ${number(r.duration_s)} s`), details);
   el.append(details);
 
   el.append(node("h4", "Engine explanation"), node("p", d.rationale || "No rationale provided", "rationale"));
@@ -336,12 +542,35 @@ document.querySelectorAll("[data-event]").forEach(b => b.onclick = () => command
 $("step").onclick = () => command({op: "step"});
 $("forward").onclick = () => command({op: "step", ticks: Number($("ticks").value)});
 $("replay").onclick = () => command({op: "replay"});
+$("execution").onchange = () => command({op: "execution", enabled: $("execution").checked, fresh_run: true});
+$("confirmDeck").onclick = () => command({op: "confirm_deck", by: $("confirmBy").value.trim() || "deck officer"});
+$("environment").onchange = () => { $("envCache").disabled = $("environment").value === "scenario"; };
+function offsetString(min) {
+  const a = Math.abs(min);
+  return `${min < 0 ? "-" : "+"}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")}`;
+}
+$("envForm").onsubmit = event => {
+  event.preventDefault();
+  if ($("environment").value === "scenario") {
+    command({op: "environment", fresh_run: true, environment: {source: "scenario"}});
+    return;
+  }
+  const tz = Number($("envTz").value);
+  command({op: "environment", fresh_run: true, environment: {
+    source: $("environment").value,
+    scenario_start: `${$("envStart").value}:00${offsetString(tz)}`,
+    layered_water: $("envLayered").checked,
+    timezone_offset_min: tz,
+    allow_stale: $("envStale").checked,
+  }});
+};
 
 async function start() {
   try {
     const response = await fetch("/api/sessions", {method: "POST"});
     if (!response.ok) throw new Error("Cannot create local session");
     render(await response.json());
+    loadCapabilities();
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${scheme}//${location.host}/ws/${state.id}`);
     socket.onopen = () => $("transport").textContent = "Local HTTP and WebSocket connected · offline";
