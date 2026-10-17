@@ -25,3 +25,8 @@ assumptions:
     unit: fraction of a guest's capability
     why: An interlock defers one short operation (e.g. a 5-min winch run) for at most one charging cycle (≤ 20 min), a few times a day. We price that at 5 % of the deferred guest's capability.
     source: invented
+  - id: arbitration.horizon_min
+    value: 60
+    unit: min
+    why: D3 counts the minutes a winner's follow-on activity (e.g. the drone's next launch) stays blocked over the next hour. That is about one survey leg plus recovery, and long enough to separate "pause and re-run" from "suspend".
+    source: invented

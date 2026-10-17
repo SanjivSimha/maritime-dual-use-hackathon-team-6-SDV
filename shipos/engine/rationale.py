@@ -111,7 +111,12 @@ def describe(b: ConstraintResult) -> str:
             f"{f.get('waiting_for')} takes {dem} min"
         )
     if r == "time.ready":
+        if f.get("blocker"):
+            return f"{f.get('guest')} cannot start {f.get('activity')}: {f['blocker']}"
         return f"readying the ship for {f.get('guest')} takes {dem} min of the {cap} min it has"
+    if r.startswith("power.overdraw."):
+        pct = fmt((b.demand / b.capacity - 1) * 100) if b.capacity else "?"  # literal-ok: percent
+        return f"{f.get('guest')} draws {dem} kW against {cap} kW declared (+{pct} %)"
     if r.startswith("time.safety_command."):
         return (
             f"a safety command over the {f.get('link')} link takes {dem} s against {cap} s"
@@ -187,7 +192,10 @@ def _costs(d: Decision, exclude_card: bool = True) -> str:
     if not items:
         return ""
     return "; cost: " + ", ".join(
-        f"{c.guest} loses {fmt(c.amount)} {c.unit} ({c.what})" for c in items
+        f"{c.guest} {c.what}"
+        if c.amount == 0
+        else f"{c.guest} loses {fmt(c.amount)} {c.unit} ({c.what})"
+        for c in items
     )
 
 

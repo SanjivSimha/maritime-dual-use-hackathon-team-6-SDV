@@ -52,3 +52,58 @@ assumptions:
     unit: s/h
     why: Unit conversion.
     source: definition
+  - id: time.min_per_day
+    value: 1440
+    unit: min/day
+    why: Unit conversion. Losing an asset costs its weight × the mission minutes left without it.
+    source: definition
+  - id: units.percent
+    value: 100
+    unit: "%"
+    why: Unit conversion for battery percentages.
+    source: definition
+  - id: display.minute_decimals
+    value: 1
+    unit: decimals
+    why: Minutes are reported to 0.1 min in decisions.
+    source: invented
+  - id: shed.horizon_min
+    value: 30
+    unit: min
+    why: D4 forecasts the guests' scheduled modes 30 min ahead, so an overlap that has not started yet (a 60-min non-interruptible recharge, a 20-min drone charge) is resolved before it trips the last genset.
+    source: invented
+  - id: shed.first_action_s
+    value: 1
+    unit: s
+    why: The first shed command leaves 1 s after the trip is detected (A.8 ceiling 5 s).
+    source: invented
+  - id: shed.step_interval_s
+    value: 2
+    unit: s
+    why: Each later step waits 2 s so the remaining genset settles between steps. Up to 30 steps still fit in the 60 s full-sequence ceiling.
+    source: invented
+  - id: shed.min_relief_kw
+    value: 0.1
+    unit: kW
+    why: Avoids dividing by zero when ranking an armed step that relieves nothing at the current peak.
+    source: invented
+  - id: display.kw_decimals
+    value: 2
+    unit: decimals
+    why: kW figures in decisions are reported to 0.01 kW.
+    source: invented
+  - id: shed.max_defer_entries
+    value: 2
+    unit: schedule entries per guest
+    why: Solver budget on the 5 s path. Only a guest's next two deferrable transitions inside the horizon are candidates for deferral.
+    source: invented
+  - id: shed.max_defer_delays
+    value: 4
+    unit: delays per entry
+    why: Solver budget. A deferral is tried up to the next four other-guest transitions (the instants where the overlap can end).
+    source: invented
+  - id: shed.max_combinations
+    value: 20000
+    unit: combinations
+    why: Count-based cap that keeps D4 deterministic and under the 5 s first-action ceiling. Above it the planner falls back to adding one move per guest in the declared ladder order.
+    source: invented

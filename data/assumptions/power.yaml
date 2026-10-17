@@ -52,3 +52,23 @@ assumptions:
     unit: bool
     why: Needed for line_lost_on_trip; without a bus-tie, guests on the lost line would lose power at the trip.
     source: invented
+  - id: overdraw.warn_ratio
+    value: 1.10
+    unit: measured / declared
+    why: The brief warns that guests exceed their declaration by 10-20 %. At +10 % the governor warns.
+    source: brief (state the system reasons on)
+  - id: overdraw.throttle_ratio
+    value: 1.15
+    unit: measured / declared
+    why: At +15 %, held for warn_after_s, the guest is throttled to its low-power mode (or standby).
+    source: invented
+  - id: overdraw.warn_after_s
+    value: 10
+    unit: s
+    why: Ignore inrush and transients shorter than 10 s.
+    source: invented
+  - id: overdraw.shed_after_s
+    value: 60
+    unit: s
+    why: An overdraw that persists for 60 s (as long as the peak allowance) is shed.
+    source: invented
