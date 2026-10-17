@@ -1,9 +1,12 @@
 # B2 simulator integration
 
 `Runner(initial, *, ship, manifests, priorities, timeline=(), seed=0,
-profiles=None, decide=None)` accepts existing frozen contract objects. Import it
+profiles=None, decide=None, environment=None)` accepts existing frozen contract objects. Import it
 from `shipos.sim.runner`. `load_scenario(Path('data/scenarios/B.yaml'))` loads
 the example through the existing data loaders. No shared contracts change.
+`load_scenario(path, *, decide=None, environment=None)` can opt into a captured
+`EnvironmentInput`. Omitting it retains the scenario's declared fixed environment.
+See [environment integration](../../docs/ENVIRONMENT.md#captured-runner-environment).
 
 * `next_t_s -> int` is read-only: the next tick time, initially `initial.t_s`.
 * `step(events: Iterable[Event] = ()) -> WorldSnapshot`: first call emits
@@ -13,6 +16,8 @@ the example through the existing data loaders. No shared contracts change.
 * `snapshot` and `context` return deep copies. Every returned snapshot owns its
   nested containers. Inputs, callback arguments, and previous snapshots remain
   separate from runner state even though contract freezing is shallow.
+* `environment -> EnvironmentInput | None` returns a defensive copy of the
+  captured input and its offline forecast for installation-window screening.
 * `jsonl -> bytes`, `final_hash -> str`: complete canonical replay log and final
   chain digest, including the initial replay-input record.
 * `clock.paced(iterable_of_snapshots)` optionally presents snapshots at 1 Hz.
@@ -169,6 +174,12 @@ batch. Replay reinjects this field while obtaining constructor events from the
 header, so constructor events are not applied twice. Without injection, this
 optional field is omitted: existing version-1 log bytes and the documented hash
 are unchanged, and `replay_jsonl` continues to replay existing logs.
+Opting into a captured environment writes replay version 2. Its initial record
+also embeds the complete cache JSON data/provenance, aware scenario start,
+layering and freshness options. Every tick evaluates that forecast at `t_s` before
+events/measurements/callbacks. Replay reconstructs it from the header with no cache
+file reads. Both formats still require the same implementation, runtime and
+applicable assumption registry; portable replay across those changes is unproven.
 `Decision.latency_ms` is excluded. Physical link latency limits in ship
 specifications remain replay inputs.
 No wall clock, execution timestamp, or measured performance enters canonical data.

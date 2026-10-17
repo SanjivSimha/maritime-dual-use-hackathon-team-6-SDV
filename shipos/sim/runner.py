@@ -16,6 +16,7 @@ from shipos.contracts import (
 )
 from shipos.data import load_guests, load_priorities, load_ship, load_yaml
 from shipos.sim.consumption import Profile
+from shipos.sim.env_input import EnvironmentInput
 from shipos.sim.log import ZERO_HASH, chain_line, verify_jsonl
 from shipos.sim.timeline import tick_time, validate_event
 
@@ -43,7 +44,11 @@ class Runner:
         seed: int = 0,
         profiles: dict[str, Profile] | None = None,
         decide: Decide | None = None,
+        environment: EnvironmentInput | None = None,
     ):
+        if environment is not None and not isinstance(environment, EnvironmentInput):
+            raise TypeError("environment must be a captured EnvironmentInput")
+        self._environment = deepcopy(environment)
         self._snapshot = initial.model_copy(deep=True)
         self._context = deepcopy(Context(ship, manifests, priorities, {}))
         self._timeline = tuple(sorted(map(validate_event, timeline), key=lambda event: event.t_s))
@@ -58,19 +63,20 @@ class Runner:
         self._validate_inputs()
         self._lines: list[bytes] = []
         self._hash = ZERO_HASH
-        self._append(
-            {
-                "type": "initial",
-                "version": 1,
-                "initial": initial.model_dump(mode="json"),
-                "ship": ship.model_dump(mode="json"),
-                "manifests": {k: v.model_dump(mode="json") for k, v in manifests.items()},
-                "priorities": priorities.model_dump(mode="json"),
-                "timeline": [event.model_dump(mode="json") for event in self._timeline],
-                "seed": seed,
-                "profiles": {k: v.model_dump(mode="json") for k, v in self._profiles.items()},
-            }
-        )
+        header = {
+            "type": "initial",
+            "version": 1,
+            "initial": initial.model_dump(mode="json"),
+            "ship": ship.model_dump(mode="json"),
+            "manifests": {k: v.model_dump(mode="json") for k, v in manifests.items()},
+            "priorities": priorities.model_dump(mode="json"),
+            "timeline": [event.model_dump(mode="json") for event in self._timeline],
+            "seed": seed,
+            "profiles": {k: v.model_dump(mode="json") for k, v in self._profiles.items()},
+        }
+        if self._environment is not None:
+            header.update(version=2, environment=self._environment.record)
+        self._append(header)
 
     def _validate_inputs(self):
         if self._snapshot.crew not in self._context.ship.crew_levels:
@@ -122,6 +128,11 @@ class Runner:
         return deepcopy(self._context)
 
     @property
+    def environment(self) -> EnvironmentInput | None:
+        """A defensive copy of the captured input, including its window-finder forecast."""
+        return deepcopy(self._environment)
+
+    @property
     def next_t_s(self) -> int:
         """Time of the next tick, including the initial tick before the first step."""
         return self._next_s
@@ -151,6 +162,8 @@ class Runner:
             injected.append(event)
         data = self._snapshot.model_dump(mode="python")
         data["t_s"] = float(t_s)
+        if self._environment is not None:
+            data["env"] = self._environment.env_at(t_s).model_dump(mode="python")
         data["mission_days_left"] = max(
             0, data["mission_days_left"] - (t_s - self._snapshot.t_s) / 86400
         )
@@ -276,7 +289,12 @@ class Runner:
         return self.snapshot
 
 
-def load_scenario(path: Path, *, decide: Decide | None = None) -> Runner:
+def load_scenario(
+    path: Path,
+    *,
+    decide: Decide | None = None,
+    environment: EnvironmentInput | None = None,
+) -> Runner:
     """Load a scenario's explicit snapshot, seed, profiles and sibling timeline YAML."""
     from shipos.sim.timeline import load_timeline
 
@@ -292,6 +310,7 @@ def load_scenario(path: Path, *, decide: Decide | None = None) -> Runner:
         seed=data["seed"],
         profiles={k: Profile.model_validate(v) for k, v in data["profiles"].items()},
         decide=decide,
+        environment=environment,
     )
 
 
@@ -302,8 +321,13 @@ def replay_jsonl(data: bytes, *, decide: Decide | None = None) -> Runner:
     verify_jsonl(data)
     lines = data.splitlines()
     header = json.loads(lines[0])["record"]
-    if header["type"] != "initial" or header["version"] != 1:
+    if header["type"] != "initial" or header["version"] not in (1, 2):
         raise ValueError("unsupported replay header")
+    environment = None
+    if header["version"] == 2:
+        environment = EnvironmentInput.from_record(header.get("environment"))
+    elif "environment" in header:
+        raise ValueError("captured environment requires replay version 2")
     runner = Runner(
         WorldSnapshot.model_validate(header["initial"]),
         ship=ShipSpec.model_validate(header["ship"]),
@@ -313,6 +337,7 @@ def replay_jsonl(data: bytes, *, decide: Decide | None = None) -> Runner:
         seed=header["seed"],
         profiles={k: Profile.model_validate(v) for k, v in header["profiles"].items()},
         decide=decide,
+        environment=environment,
     )
     for line in lines[1:]:
         record = json.loads(line)["record"]

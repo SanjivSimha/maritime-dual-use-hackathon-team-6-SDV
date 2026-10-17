@@ -148,11 +148,26 @@ def load_environment(
     allow_stale: bool = False,
 ) -> EnvironmentForecast:
     """Read only local data; freshness is relative to scenario_start, never the wall clock."""
+    return environment_from_data(
+        json.loads(path.read_text(encoding="utf-8")),
+        scenario_start=scenario_start,
+        max_age_s=max_age_s,
+        allow_stale=allow_stale,
+    )
+
+
+def environment_from_data(
+    document: dict,
+    *,
+    scenario_start: datetime,
+    max_age_s: float = MAX_AGE_S,
+    allow_stale: bool = False,
+) -> EnvironmentForecast:
+    """Convert captured cache data with the same rules as load_environment, without file I/O."""
     start = _utc(scenario_start)
     max_age_s = _finite(max_age_s, "max_age_s")
     if max_age_s < 0:
         raise ValueError("max_age_s cannot be negative")
-    document = json.loads(path.read_text(encoding="utf-8"))
     try:
         samples = _samples(document)
         retrieved = None
