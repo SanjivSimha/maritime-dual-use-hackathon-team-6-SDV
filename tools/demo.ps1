@@ -28,14 +28,33 @@ function Fail([string]$Message) {
     exit 1
 }
 
-function Find-Uv {
-    if (Get-Command uv -ErrorAction SilentlyContinue) { return , @('uv') }
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        & py -m uv --version *> $null
-        if ($LASTEXITCODE -eq 0) { return , @('py', '-m', 'uv') }
+function Test-Uv([string[]]$Candidate) {
+    # A failed discovery probe only means this candidate is unavailable. Under 'Stop', Windows
+    # PowerShell 5.1 turns a native command's stderr (e.g. "No module named uv" from `py -m uv`
+    # in an active venv) into a terminating error, so relax it for the probe and restore it.
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $probeArgs = @($Candidate | Select-Object -Skip 1) + '--version'
+        & $Candidate[0] @probeArgs *> $null
+        return $LASTEXITCODE -eq 0
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $saved
     }
+}
+
+function Find-Uv {
+    # Documented order: uv on PATH, then `py -m uv`, then the repository's .tools\uv.exe.
+    $candidates = @()
+    if (Get-Command uv -ErrorAction SilentlyContinue) { $candidates += , @('uv') }
+    if (Get-Command py -ErrorAction SilentlyContinue) { $candidates += , @('py', '-m', 'uv') }
     $local = Join-Path $Root '.tools\uv.exe'
-    if (Test-Path $local) { return , @($local) }
+    if (Test-Path $local) { $candidates += , @($local) }
+    foreach ($candidate in $candidates) {
+        if (Test-Uv $candidate) { return , $candidate }
+    }
     return $null
 }
 
