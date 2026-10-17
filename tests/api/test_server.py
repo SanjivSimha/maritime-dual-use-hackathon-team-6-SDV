@@ -96,10 +96,9 @@ def test_modes_unavailability_and_reset(client):
         assert result["decision"] is None
         assert "unavailable" in result["notice"].lower()
         assert result["mode"] == "LIVE"
-    before = client.get(f"/api/sessions/{state['id']}").json()
-    assert command(client, state, op="scenario", scenario="B").status_code == 422
-    after = client.get(f"/api/sessions/{state['id']}").json()
-    assert before == after
+    live_b = command(client, state, op="scenario", scenario="B")
+    assert live_b.status_code == 200
+    assert live_b.json()["mode"] == "LIVE"
     sample = command(client, state, op="mode", mode="SAMPLE").json()
     sample = command(client, sample, op="scenario", scenario="B").json()
     for engine in ["arbitration", "shedding"]:

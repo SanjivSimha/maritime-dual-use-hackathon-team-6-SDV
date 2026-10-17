@@ -45,7 +45,15 @@ function render(data) {
   $("modeBadge").textContent = state.mode;
   document.body.dataset.mode = state.mode;
   $("notice").textContent = state.notice;
+  $("export").href = `/api/sessions/${state.id}/evidence`;
+  $("jsonl").href = `/api/sessions/${state.id}/replay.jsonl`;
+  $("replayStatus").textContent = state.replay ?
+    `Execution replay: ${state.replay.byte_identical ? "byte-identical" : "DIFFERS"} · ${state.replay.records} records · ${state.replay.final_hash}` :
+    `Next tick ${state.next_t_s} s · horizon ${state.horizon_s} s · final hash ${state.final_hash}`;
   const snap = state.snapshot;
+  $("guestStates").textContent = Object.entries(snap.guests).map(([id, rt]) =>
+    `${id}: ${rt.mode}${rt.battery_pct == null ? "" : " · battery " + number(rt.battery_pct) + "%"}`
+  ).join(" | ");
   $("stateStrip").textContent = `t = ${number(snap.t_s)} s · ${snap.ship.speed_kn} kn · ${snap.ship.course} course · ${snap.ship.noise} · deck ${snap.ship.deck} · ${snap.platform.gensets_online} gensets · ${snap.env.seawater_c} °C seawater · ${snap.crew} crew`;
   const proposed = Object.values(state.guests).filter(g => !snap.guests[g.id]);
   const selected = proposed.some(g => g.id === oldCard) ? oldCard : proposed[0]?.id;
@@ -73,6 +81,9 @@ function render(data) {
     const d = entry.decision;
     return node("li", `[${entry.mode}] ${d.kind} · ${d.subject} · ${d.verdict} · ${d.rationale}`);
   }));
+  for (const unavailable of [...state.unavailable].reverse()) {
+    $("log").prepend(node("li", `LIVE t=${unavailable.t_s} s · ${unavailable.events.join(", ")} · ${unavailable.status}. No actions applied.`));
+  }
 }
 function fillMass() {
   $("value").value = state.guests[$("card").value]?.mass_t ?? "";
@@ -152,7 +163,12 @@ for (const id of ["mode", "scenario", "priority", "crew"]) {
 }
 $("reset").onclick = () => { $("value").value = ""; command({op: "reset"}); };
 document.querySelectorAll("[data-op]").forEach(b => b.onclick = () => command({op: b.dataset.op}));
-document.querySelectorAll("[data-event]").forEach(b => b.onclick = () => command({op: "event", event: b.dataset.event}));
+document.querySelectorAll("[data-event]").forEach(b => b.onclick = () => command({
+  op: "event", event: b.dataset.event, battery_pct: Number($("battery").value)
+}));
+$("step").onclick = () => command({op: "step"});
+$("forward").onclick = () => command({op: "step", ticks: Number($("ticks").value)});
+$("replay").onclick = () => command({op: "replay"});
 async function start() {
   try {
     const response = await fetch("/api/sessions", {method: "POST"});

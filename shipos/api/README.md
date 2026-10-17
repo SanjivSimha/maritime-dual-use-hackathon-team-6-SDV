@@ -1,47 +1,93 @@
-Run from the repository root in PowerShell after installing uv and running `uv sync --locked`.
-
-The current lockfile includes plain `uvicorn`, but neither `websockets` nor `wsproto`.
-A dedicated dependency PR must add `websockets>=15` to project dependencies and regenerate
-`uv.lock` (`uv add "websockets>=15"`). This B4 PR intentionally does not modify either file.
-Until then, provision an explicit overlay once with network access:
+﻿Run from the repository root in PowerShell. The integration branch imports PR #17
+(API/UI), PR #18 (simulator), and PR #20 (locked WebSocket runtime). No temporary
+websockets overlay is needed:
 
 ```powershell
-.\.tools\uv.exe run --with "websockets>=15" python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8000 --ws websockets
+.\.tools\uv.exe sync --locked
+.\.tools\uv.exe run --locked --offline python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8001 --ws websockets-sansio
 ```
 
-Once cached, the tested offline launch command is:
+Open http://127.0.0.1:8001/. The browser uses local JS/CSS/SVG, no build step or
+external requests. `.tools/uv.exe` is this worktree's verified local installer;
+replace it with `uv` where installed on PATH. Sessions are isolated and in memory;
+use one server worker. Restarting loses sessions. Canonical exports contain no
+session IDs or wall-clock latency. Snapshot response-time gauge remains unavailable.
+
+Tested interaction sequence:
+
+1. Start in LIVE Scenario A. Select G4, evaluate body mass 0.9 t: real D1 returns
+   yes_if with placement and engine evidence. Change it to 20 t: no, binding on
+   the hangar mass limit. Incumbent manifests and installed equipment are unchanged.
+2. Select SAR priority or crew 6. Each becomes an injected priority_swap/crew_change
+   event and reruns admission for proposed cards. Complete loaded PriorityFile and
+   GuestManifest mappings are recorded, not just file names or changed numbers.
+3. Reset restores LIVE A, original inputs, seed 0, empty proposed cards/history,
+   initial runner log/hash, priority and crew. Selecting a scenario or preview mode
+   also starts a fresh runner and replay. B's documented YAML seed is 6.
+4. Select B (LIVE simulator), enter battery report 13, inject battery report.
+   G4's actual snapshot percentage changes at t=0; its mode remains flying.
+   D3 is explicitly unavailable. First step emits initial.t_s; later steps advance
+   one simulated second. Every injected event targets public runner.next_t_s.
+5. Click Step (t=1), fast-forward 3 ticks (t=4), then inject genset trip (t=5).
+   Platform status becomes one generator. D4 remains unavailable. HTTP and WebSocket
+   receive the same updated snapshots. No action-applier or crew policy runs.
+6. Click Verify and execution-replay: integrity is checked and the complete run is
+   re-executed with the same callback and captured admission envelope. Every actual
+   record must match byte-for-byte. A valid recomputed chain containing a false
+   engine verdict fails execution replay.
+7. Download Export replay evidence (JSON bundle) and Canonical JSONL. The bundle
+   includes JSONL, final hash, captured envelope, and versioned callback identifier.
+   The JSONL endpoint also returns X-ShipOS-Final-Hash. Reset clears injected events,
+   and repeating the same inputs produces the same bytes and hash.
+
+The B baseline is bounded to t=720 s; each fast-forward is 1-120 ticks, and a
+command exceeding the horizon is rejected as a whole. Unmodified B: six 120-tick
+commands plus one step emit t=0..720. Minute 8 reports the battery; minute 12 trips
+the generator. The minute-12 nominal draw is 49.5 kW, with synthetic G5 noise in
+measurements. There is no invented 106.5 kW overload, recovery, charge overlap,
+shedding or bus transfer. Lost-line feasibility still requires real engine work.
+Injecting a trip early means the baseline trip at 720 would no longer reduce the
+count; the runner rejects that tick transactionally. Reset to replay the untouched
+baseline. No baseline event is silently suppressed.
+
+NotImplementedError from D3/D4 is recorded by Runner as engine_not_implemented;
+progression is LIVE, with no SAMPLE fallback. Runner discards decisions for that
+whole callback batch if any engine call raises NotImplementedError. Unavailability
+is retained in the UI log even if later ticks have no events. Other failures reject
+the API command without committing its snapshot, context, RNG, history or log.
+Direct D3/D4 buttons are read-only queries outside canonical simulation records;
+only an explicitly selected SAMPLE mode previews fixtures. Preview results are
+never added to runner.jsonl. The runner records Decisions but never applies actions.
+
+Replay portability limits: the bundle preserves the admission envelope in addition
+to the runner header's ship, manifests, priorities, timeline, seed and profiles.
+Replay uses embedded inputs, not current scenario/envelope YAML. It still requires
+this callback implementation and the same engine/physics code, assumption registry,
+and compatible Python/runtime. Callback code and the assumption registry are not
+serialized; this is not an independently portable replay artifact. Keep the final
+hash separately for tamper detection. UI previews/read-only queries are not replayed.
+To re-execute a downloaded bundle in the same checkout/environment:
 
 ```powershell
-.\.tools\uv.exe run --offline --with "websockets>=15" python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8000 --ws websockets
+.\.tools\uv.exe run --locked python -c "import json; from pathlib import Path; from shipos.api.adapter import replay_evidence; print(replay_evidence(json.loads(Path('shipos-evidence.json').read_text())))"
 ```
 
-Open http://127.0.0.1:8000/. `.tools/uv.exe` is the local installer location for this
-worktree; installations with uv on PATH can replace `.\.tools\uv.exe` with `uv`.
-The UI has no build step, CDN, font download, or network data source.
-Sessions are isolated, in memory, and served by one worker; restarting loses sessions.
-Reset restores baseline A, LIVE, survey priority, crew, cards and decision log.
+API: POST /api/sessions; GET /api/sessions/{id}; POST /api/sessions/{id}/commands;
+WebSocket /ws/{id} sends initial state and the same command/update protocol.
+GET /api/sessions/{id}/evidence and /replay.jsonl export consistent committed state.
+Examples:
+- {"op":"admit","card":"G4","value":20}
+- {"op":"step","ticks":60}
+- {"op":"event","event":"battery_report","battery_pct":13}
+- {"op":"event","event":"genset_trip"}
+- {"op":"priority","priority":"sar_primary"}
+- {"op":"crew","crew":6}
+- {"op":"scenario","scenario":"B"}
+- {"op":"replay"} or {"op":"reset"}
 
-LIVE admission uses loaded manifests/priorities/envelope and the existing Scenario A
-baseline snapshot from `tests/fixtures/`. Decisions come from `admission.decide`,
-including D2 placement; evaluations do not install guests or apply decision actions.
-Gauges use `physics.budget.gauges` for current installed equipment, separately from
-admission envelope checks. Time is unavailable without a snapshot timing measurement.
-Decision latency is measured wall-clock engine time, not a simulated response guarantee.
-
-SAMPLE B is a fixture snapshot. SAMPLE D3/D4 previews are fixture decisions and do not
-react to edits or priority. LIVE calls stubs honestly and reports unavailable. No
-fixture is substituted for a failed LIVE call. Event buttons currently report unavailable.
-School must publish its runner's initialization, Event submission, snapshot retrieval,
-and decision-update interface before `adapter.py` can connect B/live events or a clock.
-No simulator branch/PR was available at initial implementation; recheck before integration.
-
-HTTP: `POST /api/sessions`, `GET /api/sessions/{id}`, and
-`POST /api/sessions/{id}/commands`. WebSocket `/ws/{id}` sends initial state,
-accepts the same commands, and broadcasts updates from either transport.
-Example: `{"op":"admit","card":"G4","value":20}` edits body mass in tonnes.
-Other commands: `reset`, `crew` (0/6/14), `priority`, `mode`, `scenario`,
-`arbitration`, `shedding`, `event`. Invalid commands never commit session changes.
-
-Tests: `uv run pytest tests/api`. Optional real Uvicorn/browser verification:
-`uv run --with "websockets>=15" --with playwright pytest tests/api`.
-The browser check uses installed Windows Chrome; it never downloads a browser.
+Tests: `.\.tools\uv.exe run --locked pytest tests/api -rs` runs admission, simulator,
+replay and actual Uvicorn WebSocket tests with locked dependencies. Browser checks
+skip if Playwright/local Windows Chrome is absent. To run them without adding any
+project dependency: `.\.tools\uv.exe run --offline --with playwright pytest tests/api -rs`.
+The browser test blocks external requests and uses installed Chrome; no browser is
+downloaded. Only Playwright test tooling uses an overlay, never the WebSocket backend.

@@ -4,21 +4,20 @@ import asyncio
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from time import perf_counter
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from shipos.api import adapter
-from shipos.contracts import Decision, GuestManifest, ResourceClass, WorldSnapshot
-from shipos.data import load_envelope, load_guests, load_priorities, load_ship
-from shipos.engine import admission, arbitration, shedding
+from shipos.contracts import Decision, GuestManifest, ResourceClass
+from shipos.data import load_priorities
+from shipos.engine import arbitration, shedding
 from shipos.physics import budget
 
 STATIC = Path(__file__).parent / "static"
@@ -28,7 +27,17 @@ PRIORITIES = ("survey_primary", "sar_primary")
 class Command(BaseModel):
     model_config = ConfigDict(extra="forbid")
     op: Literal[
-        "admit", "priority", "crew", "scenario", "mode", "reset", "event", "arbitration", "shedding"
+        "admit",
+        "priority",
+        "crew",
+        "scenario",
+        "mode",
+        "reset",
+        "event",
+        "arbitration",
+        "shedding",
+        "step",
+        "replay",
     ]
     card: str | None = None
     value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -37,35 +46,26 @@ class Command(BaseModel):
     scenario: Literal["A", "B"] | None = None
     mode: Literal["LIVE", "SAMPLE"] | None = None
     event: Literal["genset_trip", "battery_report"] | None = None
+    battery_pct: float = Field(default=18, ge=0, le=100, allow_inf_nan=False)
+    ticks: int = Field(default=1, ge=1, le=adapter.MAX_TICKS, strict=True)
 
 
 @dataclass
 class Session:
     id: str
-    guests: dict[str, GuestManifest] = field(default_factory=load_guests)
-    snapshot: WorldSnapshot = field(default_factory=lambda: adapter.snapshot("A", "LIVE"))
+    simulation: adapter.Simulation = field(default_factory=adapter.Simulation)
     mode: str = "LIVE"
     scenario: str = "A"
     priority: str = "survey_primary"
     decision: Decision | None = None
     history: list[dict] = field(default_factory=list)
-    card: str | None = None
-    notice: str = "Baseline Scenario A snapshot; LIVE calculations, no simulation clock."
+    unavailable: list[dict] = field(default_factory=list)
+    replay: dict | None = None
+    notice: str = "LIVE Runner ready. First step emits t=0; no decision actions are applied."
 
-
-def decide(state: Session):
-    start = perf_counter()
-    state.decision = admission.decide(
-        load_ship(),
-        state.guests,
-        state.snapshot,
-        state.guests[state.card],
-        load_priorities(state.priority),
-        load_envelope(),
-    )
-    state.decision = state.decision.model_copy(
-        update={"latency_ms": (perf_counter() - start) * 1000}
-    )
+    @property
+    def snapshot(self):
+        return self.simulation.runner.snapshot
 
 
 def apply(state: Session, cmd: Command) -> Session:
@@ -83,61 +83,111 @@ def apply(state: Session, cmd: Command) -> Session:
     }
     if cmd.op in required and getattr(cmd, required[cmd.op]) is None:
         raise ValueError(f"{required[cmd.op]} is required")
+    if cmd.op == "replay":
+        state.replay = adapter.replay_evidence(state.simulation.evidence())
+        state.notice = (
+            "Execution replay byte-identical (same callback, engine and runtime required)."
+        )
+        return state
     state.decision = None
-    state.notice = "LIVE engine calculation" if state.mode == "LIVE" else "SAMPLE mode"
+    state.replay = None
+    state.notice = "LIVE simulator progression; decisions are recorded, actions are not applied."
+    context = state.simulation.runner.context
+    catalogue = {**context.manifests, **context.cards}
+    inputs = []
     if cmd.op == "admit":
-        if cmd.card not in state.guests or cmd.card in state.snapshot.guests:
+        if cmd.card not in catalogue or cmd.card in state.snapshot.guests:
             raise ValueError("Select a proposed card that is not already aboard")
         if cmd.value is None:
             raise ValueError("A finite, nonnegative mass_t value is required")
-        raw = state.guests[cmd.card].model_dump()
+        raw = catalogue[cmd.card].model_dump()
         raw["mass_t"] = cmd.value
-        state.guests[cmd.card] = GuestManifest.model_validate(raw)
-        state.card = cmd.card
-        decide(state)
+        card = GuestManifest.model_validate(raw)
+        inputs = [("card_presented", {"card": card.model_dump(mode="json")})]
     elif cmd.op in ("crew", "priority"):
         if cmd.op == "crew":
-            state.snapshot = state.snapshot.model_copy(update={"crew": cmd.crew})
+            inputs = [("crew_change", {"crew": cmd.crew})]
         else:
             state.priority = cmd.priority
-        if state.card:
-            decide(state)
+            inputs = [
+                (
+                    "priority_swap",
+                    {"priorities": load_priorities(cmd.priority).model_dump(mode="json")},
+                )
+            ]
     elif cmd.op in ("mode", "scenario"):
         state.mode = cmd.mode if cmd.op == "mode" else state.mode
         state.scenario = cmd.scenario if cmd.op == "scenario" else "A"
-        state.snapshot = adapter.snapshot(state.scenario, state.mode)
-        state.card = None
-        state.history = []
-        state.notice = (
-            "SAMPLE fixture snapshot; admission still calls the real engine"
+        # Selecting an input scenario/mode starts a fresh replay, never relabels old evidence.
+        return Session(
+            state.id,
+            simulation=adapter.Simulation(state.scenario),
+            mode=state.mode,
+            scenario=state.scenario,
+            notice="Runner reset. SAMPLE applies only to explicit D3/D4 previews."
             if state.mode == "SAMPLE"
-            else "Baseline A snapshot; LIVE calculations, no clock"
+            else "LIVE Runner baseline restored.",
         )
     elif cmd.op == "event":
-        state.snapshot = adapter.apply_event(cmd.event)
+        payload = (
+            {"gensets_online": 1}
+            if cmd.event == "genset_trip"
+            else {"guest_id": "G4", "battery_pct": cmd.battery_pct}
+        )
+        inputs = [(cmd.event, payload)]
+    elif cmd.op == "step":
+        pass
     elif state.mode == "SAMPLE":
         state.decision = adapter.preview(cmd.op)
         state.notice = "SAMPLE fixture preview; edits and priority do not affect this preview"
     elif cmd.op == "arbitration":
         state.decision = arbitration.decide(
-            load_ship(),
-            state.guests,
+            context.ship,
+            context.manifests,
             state.snapshot,
-            load_priorities(state.priority),
+            context.priorities,
             "G4",
             "recovery",
         )
     else:
         state.decision = shedding.plan(
-            load_ship(), state.guests, state.snapshot, load_priorities(state.priority)
+            context.ship,
+            context.manifests,
+            state.snapshot,
+            context.priorities,
         )
+    if inputs or cmd.op == "step":
+        records = state.simulation.advance(cmd.ticks if cmd.op == "step" else 1, inputs)
+        for record in records:
+            for decision in record["decisions"]:
+                state.history.append({"mode": "LIVE", "decision": decision})
+            if record["decision_status"] == "engine_not_implemented":
+                state.unavailable.append(
+                    {
+                        "t_s": record["snapshot"]["t_s"],
+                        "events": [e["kind"] for e in record["events"]],
+                        "status": "unavailable: engine callback batch not implemented",
+                    }
+                )
+                state.notice = (
+                    "LIVE progression; D3/D4 engine batch unavailable. No SAMPLE substitution."
+                )
+        decisions = records[-1]["decisions"]
+        state.decision = Decision.model_validate(decisions[-1]) if decisions else None
+    elif state.decision:
+        # Explicit read-only engine queries/previews are outside the simulation replay.
+        state.history.append(
+            {"mode": state.mode, "decision": state.decision.model_dump(mode="json")}
+        )
+    state.history = state.history[-30:]
     return state
 
 
 def view(state: Session) -> dict:
-    ship = load_ship()
+    context = state.simulation.runner.context
+    ship = context.ship
     try:
-        values = {r.cls: r for r in budget.gauges(ship, state.guests, state.snapshot)}
+        values = {r.cls: r for r in budget.gauges(ship, context.manifests, state.snapshot)}
         error = None
     except NotImplementedError as exc:
         values, error = {}, str(exc)
@@ -165,15 +215,24 @@ def view(state: Session) -> dict:
         "scenario": state.scenario,
         "notice": state.notice,
         "ship": ship.model_dump(mode="json"),
-        "guests": {k: v.model_dump(mode="json") for k, v in state.guests.items()},
+        "guests": {
+            k: v.model_dump(mode="json") for k, v in {**context.manifests, **context.cards}.items()
+        },
+        "manifests": {k: v.model_dump(mode="json") for k, v in context.manifests.items()},
+        "proposed_cards": {k: v.model_dump(mode="json") for k, v in context.cards.items()},
         "snapshot": state.snapshot.model_dump(mode="json"),
-        "priority": load_priorities(state.priority).model_dump(mode="json"),
+        "priority": context.priorities.model_dump(mode="json"),
         "priority_name": state.priority,
         "priorities": PRIORITIES,
-        "envelope": load_envelope().model_dump(mode="json"),
+        "envelope": state.simulation.envelope.model_dump(mode="json"),
         "gauges": gauges,
         "decision": state.decision.model_dump(mode="json") if state.decision else None,
         "history": state.history,
+        "unavailable": state.unavailable,
+        "replay": state.replay,
+        "next_t_s": state.simulation.runner.next_t_s,
+        "final_hash": state.simulation.runner.final_hash,
+        "horizon_s": adapter.HORIZON_S,
     }
 
 
@@ -199,11 +258,6 @@ def create_app() -> FastAPI:
                 updated.notice = f"{updated.mode} unavailable: {exc}"
             except (ValueError, KeyError) as exc:
                 raise HTTPException(422, str(exc)) from exc
-            if updated.decision:
-                updated.history = (
-                    updated.history
-                    + [{"mode": updated.mode, "decision": updated.decision.model_dump(mode="json")}]
-                )[-30:]
             response = await run_in_threadpool(view, updated)
             sessions[sid] = updated
             for ws in tuple(peers[sid]):
@@ -235,6 +289,29 @@ def create_app() -> FastAPI:
     @app.post("/api/sessions/{sid}/commands")
     async def command(sid: str, cmd: Command):
         return await execute(sid, cmd)
+
+    @app.get("/api/sessions/{sid}/evidence")
+    async def evidence(sid: str):
+        get(sid)
+        async with locks[sid]:
+            return JSONResponse(
+                get(sid).simulation.evidence(),
+                headers={"Content-Disposition": 'attachment; filename="shipos-evidence.json"'},
+            )
+
+    @app.get("/api/sessions/{sid}/replay.jsonl")
+    async def replay_log(sid: str):
+        get(sid)
+        async with locks[sid]:
+            runner = get(sid).simulation.runner
+            return Response(
+                runner.jsonl,
+                media_type="application/x-ndjson",
+                headers={
+                    "X-ShipOS-Final-Hash": runner.final_hash,
+                    "Content-Disposition": 'attachment; filename="shipos-replay.jsonl"',
+                },
+            )
 
     @app.websocket("/ws/{sid}")
     async def updates(ws: WebSocket, sid: str):

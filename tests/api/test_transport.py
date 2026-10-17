@@ -1,8 +1,4 @@
-"""Optional real transport/browser checks using websockets and playwright overlays.
-
-The locked environment lacks a WebSocket backend. Extras here are explicit test
-overlays, not changes to the project dependency graph. Browser test uses local Chrome.
-"""
+"""Real transport uses locked websockets; optional browser uses local Chrome/playwright."""
 
 import json
 import os
@@ -14,11 +10,11 @@ from pathlib import Path
 
 import httpx
 import pytest
+from websockets.sync.client import connect
 
 
 @pytest.fixture
 def server():
-    pytest.importorskip("websockets", reason="Dedicated WebSocket dependency PR needed")
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -33,7 +29,7 @@ def server():
             "--port",
             str(port),
             "--ws",
-            "websockets",
+            "websockets-sansio",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -58,8 +54,6 @@ def server():
 
 
 def test_uvicorn_websocket_round_trip(server):
-    from websockets.sync.client import connect
-
     state = httpx.post(f"{server}/api/sessions").json()
     with connect(f"{server.replace('http:', 'ws:')}/ws/{state['id']}") as ws:
         assert json.loads(ws.recv(timeout=5))["mode"] == "LIVE"
@@ -67,6 +61,21 @@ def test_uvicorn_websocket_round_trip(server):
         update = json.loads(ws.recv(timeout=5))
         assert update["decision"]["verdict"] == "no"
         assert update["decision"]["binding"]["demand"] >= 20
+        ws.send(json.dumps({"op": "scenario", "scenario": "B"}))
+        assert json.loads(ws.recv(timeout=5))["snapshot"]["guests"]["G4"]["battery_pct"] == 30
+        ws.send(json.dumps({"op": "event", "event": "battery_report", "battery_pct": 12}))
+        update = json.loads(ws.recv(timeout=5))
+        assert update["snapshot"]["guests"]["G4"]["battery_pct"] == 12
+        assert httpx.get(f"{server}/api/sessions/{state['id']}").json() == update
+        ws.send(json.dumps({"op": "step", "ticks": 3}))
+        assert json.loads(ws.recv(timeout=5))["snapshot"]["t_s"] == 3
+        ws.send(json.dumps({"op": "event", "event": "genset_trip"}))
+        update = json.loads(ws.recv(timeout=5))
+        assert update["snapshot"]["platform"]["gensets_online"] == 1
+        ws.send(json.dumps({"op": "replay"}))
+        replay = json.loads(ws.recv(timeout=5))
+        assert replay["replay"]["byte_identical"]
+        assert replay["replay"]["snapshot"] == update["snapshot"]
 
 
 def test_browser_offline_edit_reset_and_untrusted_text(server):
@@ -104,6 +113,33 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
             "document.querySelector('#decision').textContent.includes('No current decision')"
         )
         assert page.locator("#value").input_value() == "0.9"
+        # Actual browser commands progress the real simulator and export complete evidence.
+        page.select_option("#scenario", "B")
+        page.wait_for_function(
+            "state.scenario === 'B' && state.snapshot.guests.G4.battery_pct === 30"
+        )
+        page.fill("#battery", "13")
+        page.click('[data-event="battery_report"]')
+        page.wait_for_function("state.snapshot.guests.G4.battery_pct === 13")
+        assert "battery 13%" in page.locator("#guestStates").inner_text()
+        assert "unavailable" in page.locator("#notice").inner_text()
+        page.click("#step")
+        page.wait_for_function("state.snapshot.t_s === 1")
+        page.fill("#ticks", "3")
+        page.click("#forward")
+        page.wait_for_function("state.snapshot.t_s === 4")
+        page.click('[data-event="genset_trip"]')
+        page.wait_for_function("state.snapshot.platform.gensets_online === 1")
+        page.click("#replay")
+        page.wait_for_function("state.replay?.byte_identical === true")
+        assert "byte-identical" in page.locator("#replayStatus").inner_text()
+        with page.expect_download() as download:
+            page.click("#export")
+        saved = json.loads(Path(download.value.path()).read_text())
+        assert saved["envelope"] and saved["final_hash"]
+        assert "injected_events" in saved["jsonl"]
+        page.click("#reset")
+        page.wait_for_function("state.scenario === 'A' && state.next_t_s === 0")
         page.evaluate("""() => {
             const data = structuredClone(state);
             data.guests.G4.name = '<img src=x onerror=alert(1)>';
