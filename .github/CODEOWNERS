@@ -1,0 +1,11 @@
+# Person A: physics + decision engine. Person B: data, sim, UI, crew, docs.
+# TODO: replace @TEAMMATE with your teammate's GitHub handle once they have repo access.
+*                         @SanjivSimha
+
+/shipos/physics/          @SanjivSimha
+/shipos/engine/           @SanjivSimha
+/shipos/statemachine.py   @SanjivSimha
+
+# Shared contracts and CI need both people.
+/shipos/contracts.py      @SanjivSimha
+/.github/                 @SanjivSimha

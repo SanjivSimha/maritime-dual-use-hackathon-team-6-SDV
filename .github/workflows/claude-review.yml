@@ -1,0 +1,54 @@
+name: Claude PR review
+
+# Automated review of every PR (most are written by coding agents) against CLAUDE.md.
+# Needs the ANTHROPIC_API_KEY repo secret; without it the job skips cleanly so CI stays green.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for API key
+        id: key
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::ANTHROPIC_API_KEY not set; skipping Claude review."; fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.key.outputs.present == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+            Read CLAUDE.md and docs/PLAN.md first; they are the rules.
+            Check specifically:
+            - numbers in shipos/engine or shipos/physics come from the assumption registry, each with a `why`;
+            - engine code is pure (no wall clock, random, or I/O);
+            - every Decision sets `binding` and rationale goes through rationale.render (no canned strings);
+            - golden tests derive expected values from Annex inputs rather than hard-coding outputs;
+            - shipos/contracts.py changes are called out in the PR description.
+            Report correctness bugs first, then rule violations. Post one concise review comment;
+            do not push commits.
+          claude_args: "--max-turns 15"
