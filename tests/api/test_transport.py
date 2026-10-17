@@ -108,6 +108,13 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         page.click("#admit button")
         page.wait_for_function("document.querySelector('#decision h3').textContent.includes('no')")
         assert "deck.hangar.mass" in page.locator("#decision").inner_text()
+        assert page.locator('#priority option[value="patrol"]').count() == 1
+        page.select_option("#priority", "patrol")
+        page.wait_for_function(
+            "state.priority_name === 'patrol' && state.priority.mission === 'patrol'"
+        )
+        page.click("#replay")
+        page.wait_for_function("state.replay?.byte_identical === true")
         page.click("#reset")
         page.wait_for_function(
             "document.querySelector('#decision').textContent.includes('No current decision')"
@@ -138,21 +145,36 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         saved = json.loads(Path(download.value.path()).read_text())
         assert saved["envelope"] and saved["final_hash"]
         assert "injected_events" in saved["jsonl"]
+        baseline_b = page.evaluate("state.final_hash")
+        page.select_option("#mode", "SAMPLE")
+        page.wait_for_function("state.mode === 'SAMPLE' && state.next_t_s === 0")
+        assert page.locator("#scenario").input_value() == "B"
+        assert page.locator("#modeBadge").inner_text() == "SAMPLE"
+        assert page.evaluate("state.snapshot.guests.G4.battery_pct") == 30
+        fresh_b = page.evaluate("state.final_hash")
+        assert fresh_b != baseline_b
+        page.select_option("#mode", "LIVE")
+        page.wait_for_function("state.mode === 'LIVE' && state.next_t_s === 0")
+        assert page.locator("#scenario").input_value() == "B"
+        assert page.locator("#modeBadge").inner_text() == "LIVE"
+        assert page.evaluate("state.final_hash") == fresh_b
         page.click("#reset")
         page.wait_for_function("state.scenario === 'A' && state.next_t_s === 0")
-        page.evaluate("""() => {
+        rendered = page.evaluate("""() => {
             const data = structuredClone(state);
             data.guests.G4.name = '<img src=x onerror=alert(1)>';
             data.decision = {subject:'G4', verdict:'yes', rationale:'<script>alert(1)</script>'};
             render(data);
+            // Capture this local rendering atomically before another live update can render.
+            return {
+                label: document.querySelector('#card option[value=G4]').textContent,
+                decision: document.querySelector('#decision').textContent,
+                injected: document.querySelectorAll('#decision script, #decision img').length
+            };
         }""")
-        assert (
-            page.locator("#card option[value=G4]")
-            .text_content()
-            .endswith("<img src=x onerror=alert(1)>")
-        )
-        assert "<script>alert(1)</script>" in page.locator("#decision").inner_text()
-        assert page.locator("#decision script, #decision img").count() == 0
+        assert rendered["label"].endswith("<img src=x onerror=alert(1)>")
+        assert "<script>alert(1)</script>" in rendered["decision"]
+        assert rendered["injected"] == 0
         assert page.locator(".gauge").count() == 8
         assert not errors and not external
         browser.close()

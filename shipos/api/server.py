@@ -15,13 +15,21 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from shipos.api import adapter
-from shipos.contracts import Decision, GuestManifest, ResourceClass
+from shipos.contracts import Decision, GuestManifest, PriorityFile, ResourceClass
 from shipos.data import load_priorities
 from shipos.engine import arbitration, shedding
+from shipos.paths import DATA_DIR
 from shipos.physics import budget
 
 STATIC = Path(__file__).parent / "static"
-PRIORITIES = ("survey_primary", "sar_primary")
+
+
+def priority_catalog() -> dict[str, PriorityFile]:
+    directory = DATA_DIR / "priorities"
+    return {
+        path.stem: load_priorities(path.stem, directory=directory)
+        for path in sorted(directory.glob("*.yaml"))
+    }
 
 
 class Command(BaseModel):
@@ -41,7 +49,7 @@ class Command(BaseModel):
     ]
     card: str | None = None
     value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
-    priority: Literal["survey_primary", "sar_primary"] | None = None
+    priority: str | None = None
     crew: Literal[0, 6, 14] | None = None
     scenario: Literal["A", "B"] | None = None
     mode: Literal["LIVE", "SAMPLE"] | None = None
@@ -54,6 +62,7 @@ class Command(BaseModel):
 class Session:
     id: str
     simulation: adapter.Simulation = field(default_factory=adapter.Simulation)
+    priorities: dict[str, PriorityFile] = field(default_factory=priority_catalog)
     mode: str = "LIVE"
     scenario: str = "A"
     priority: str = "survey_primary"
@@ -108,16 +117,18 @@ def apply(state: Session, cmd: Command) -> Session:
         if cmd.op == "crew":
             inputs = [("crew_change", {"crew": cmd.crew})]
         else:
+            if cmd.priority not in state.priorities:
+                raise ValueError("Unknown priority; select an existing catalog key")
             state.priority = cmd.priority
             inputs = [
                 (
                     "priority_swap",
-                    {"priorities": load_priorities(cmd.priority).model_dump(mode="json")},
+                    {"priorities": state.priorities[cmd.priority].model_dump(mode="json")},
                 )
             ]
     elif cmd.op in ("mode", "scenario"):
         state.mode = cmd.mode if cmd.op == "mode" else state.mode
-        state.scenario = cmd.scenario if cmd.op == "scenario" else "A"
+        state.scenario = cmd.scenario if cmd.op == "scenario" else state.scenario
         # Selecting an input scenario/mode starts a fresh replay, never relabels old evidence.
         return Session(
             state.id,
@@ -223,7 +234,7 @@ def view(state: Session) -> dict:
         "snapshot": state.snapshot.model_dump(mode="json"),
         "priority": context.priorities.model_dump(mode="json"),
         "priority_name": state.priority,
-        "priorities": PRIORITIES,
+        "priorities": list(state.priorities),
         "envelope": state.simulation.envelope.model_dump(mode="json"),
         "gauges": gauges,
         "decision": state.decision.model_dump(mode="json") if state.decision else None,
