@@ -176,14 +176,117 @@ windows = find_installation_windows(
 print(env.seawater_c, env.wind_kn, windows)
 ```
 
-For main's integration, build a snapshot with the returned `Env` using existing
-contract construction or validated copy construction. Call `env_at` with the
-simulation-relative time as needed. B3 does not modify Runner or replay behavior;
-persist the exact cache, scenario start, local timezone, and caller inputs when
-coordinating a replay. Use this finder for coverage-aware physical windows.
+The optional Runner integration below supplies actual forecast-backed snapshots.
+Use this finder for coverage-aware physical windows.
 `Env.forecast` cannot express missing-data masks or a validity duration, so do
 not infer extra coverage from the terminal `ForecastPoint` or a separate engine's
 window heuristic. No Track A signature or implementation is changed here.
+
+## Captured Runner environment
+
+This additive integration imports the published dependencies without changing
+their branches: B2 PR #18 at `0023d1e6295fd75f954fe14440f0df127bbb6ad0` and B3
+PR #24 at `3982ca90bca37fce382d8dfa6fb3bf9c7b4c3a7e`. The common main base is
+`ffe6f3fa8840bdb30aecab70ec92ab0331f9aec0`. No API, crew-policy or unrelated
+unmerged changes are imported.
+
+The public input in `shipos.sim.env_input` is:
+
+```python
+EnvironmentInput(cache: dict, *, scenario_start: datetime, layered_water: bool,
+                 max_age_s=86400, allow_stale=False)
+EnvironmentInput.from_cache(path: Path, *, scenario_start: datetime,
+                            layered_water: bool, max_age_s=86400,
+                            allow_stale=False) -> EnvironmentInput
+EnvironmentInput.from_record(record: dict) -> EnvironmentInput
+```
+
+`from_cache` is explicit preparation that reads the local cache once; passing a
+dict avoids that read. `record` and `forecast` properties return defensive copies.
+`env_at(t_s=0) -> Env` uses the captured layering input. A new
+`environment_from_data(document, *, scenario_start, max_age_s=86400,
+allow_stale=False)` offline helper uses precisely the existing B3 conversion rules
+without file I/O. Disallowed stale data and naive starts fail during preparation.
+
+Pass `environment=input` to `Runner(...)` or
+`load_scenario(path, *, decide=None, environment=None)`. Existing signatures and
+fixed-environment scenarios remain compatible. Before its first completed tick,
+`runner.snapshot` is the supplied initial snapshot. Each `step` then computes
+the actual Env at the upcoming simulation time in a separate candidate snapshot,
+before applying constructor events, ordered injected events, measurements and
+the existing callback. That Env reaches both callback and committed snapshot.
+
+Missing current SST, unknown intervals or exhausted coverage raise
+`EnvironmentUnavailable`. A failed step, including a callback failure, commits
+nothing: snapshot, context, mode clocks, timeline cursor, RNG, next tick, log and
+hash stay unchanged. There is no obsolete-Env fallback or automatic refresh.
+`runner.environment` returns a defensive copy for public inspection/window use.
+
+### Replay evidence and compatibility
+
+No environment input means **version 1**, byte-identical records and the original
+Scenario B hash `ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28`.
+No baseline scenario file or chronology is changed.
+
+Opting in writes **version 2** and an `environment` field in the initial record.
+The input subrecord has version 1 and embeds full cache JSON values (including
+source URLs, retrieval timestamps, units and coordinates), the aware start as
+ISO 8601 with its explicit offset, layering, `max_age_s`, and `allow_stale`.
+This captures JSON content, not file whitespace, path names or filesystem state.
+Cache provenance timestamps are fixed inputs; no runtime wall-clock reads are
+made. Source cache mutation/removal cannot change an existing run or its replay.
+Constructor/live event ordering and latency exclusion remain unchanged.
+
+`replay_jsonl` reads both runner versions and reconstructs version 2 entirely
+from embedded data. It does not reread the original cache or scenario files.
+The same code, runtime, pure callback, and applicable assumption registry remain
+required, including the hourly-hold convention and wave mapping. The cache and
+freshness options are captured; independent portability across implementation or
+registry changes has not been proved. Installation-window queries are separate
+calculations; retain their operation/crew/speed/people/timezone inputs if replaying
+those results. They are not silently added to Runner decisions or its log.
+
+### Copy-paste offline reproduction for main
+
+From the repository root in `py -m uv run python`:
+
+```python
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from shipos.sim.env import find_installation_windows
+from shipos.sim.env_input import EnvironmentInput
+from shipos.sim.runner import load_scenario, replay_jsonl
+
+source = EnvironmentInput.from_cache(
+    Path("data/env_cache/strait_of_sicily.json"),
+    scenario_start=datetime.fromisoformat("2026-10-17T08:59:59+00:00"),
+    layered_water=False,
+)
+runner = load_scenario(Path("data/scenarios/B.yaml"), environment=source)
+first, second = runner.step(), runner.step()
+print(first.env.wind_kn, second.env.wind_kn)  # real cached values: 5.4 -> 5.7 kn
+windows = find_installation_windows(
+    runner.context.ship,
+    runner.environment.forecast,
+    operation="ramp",
+    crew=6,
+    speed_kn=6,
+    people_available=4,
+    local_tz=timezone(timedelta(hours=2)),
+)
+print(windows)
+assert replay_jsonl(runner.jsonl).jsonl == runner.jsonl
+print(runner.final_hash)
+```
+
+The window query explicitly plans for six crew, four available handlers and a
+constant 6 kn. It does not reconfigure the scenario's actual 14 crew/3 kn, grant
+admission/crew permission, or execute an installation. Eligibility remains
+conditional on the declared planning inputs. The fixed UTC+02:00 demonstration
+timezone and `layered_water=False` are explicit caller inputs, not new provider
+observations. Main can opt in with the keyword above and let existing callbacks
+receive the actual per-tick environment; no private runner fields are needed.
 
 ## Explicit refresh and failure behavior
 
