@@ -59,3 +59,46 @@ Tests run and exact results:
 Known problems or missing dependencies:
 Next recommended action:
 ```
+
+
+## Integration captain checkpoint ? 2026-10-17
+
+- Owner: main, sole merger/checkpoint writer for this phase.
+- Merged implementation: #35 squash-merged as d309257897c56b5a0501ede6f35aa9b95cb16c19.
+  Reviewed head d8bf25d included main 6ace4b6 unchanged. Source branch preserved.
+- Baseline proof at #35: locked sync and all repository static/guard checks pass;
+  389 tests pass, one optional Playwright skip. Installed-Chrome API/browser suite:
+  27 pass with external requests blocked. This proves observation/admission/replay,
+  not execution of recommendations.
+- Automated review job is green but skipped substantive review because
+  ANTHROPIC_API_KEY is absent. Droid reviewed d8bf25d and found no observation-mode merge blocker. Execution
+  must preserve winner protection, distinguish request time bases and gate on actual
+  confirmation receipt. Those requirements gate follow-up execution integration.
+- Runtime work: draft #37 publishes exact execution/confirmation/environment commands.
+  School's #36 execution seam is still in progress; Claude's #38 controls are separate.
+  No opt-in action execution proof or runtime merge is claimed.
+- Consolidation: #16?#28 and #30 heads are ancestors of #35, excluding #29. #29's
+  judge-card work was reconciled in #30 (78d6eb4) rather than wholesale merged;
+  its cards.py/test_judge_cards.py files are not adopted. #31 has three still-unique
+  release-evidence documents (fc00d86); keep it open for current-evidence refresh.
+  All older source PRs remain open and branches preserved.
+- G6 exact-five tests and Windows default-encoding YAML corruption remain outstanding
+  ownership/shared-loader issues, reported to Sanjiv. No Track A or loader fixes here.
+
+- API #37 authored commits were rebased ONLY from recorded #35 d8bf25d onto
+  merged main d309257; no consolidated Track B commits are being reapplied.
+  Current API proof: 397 repository tests pass, one optional browser skip;
+  35 installed-Chrome API/browser tests pass. Eight new runtime tests exercise
+  public crew/environment libraries, real protected/confirmation callback inputs
+  and Uvicorn WebSocket environment stepping/replay. Execution remains unavailable
+  until finished #36 code is imported. No applied-action or landing proof claimed.
+- G6/Windows loader reproductions: issue #39, assigned to Sanjiv.
+
+- GitHub auto-deleted #35's source ref despite no delete flag being requested;
+  main restored b/ui-clarity-v1 at its exact reviewed d8bf25d head without force.
+- Post-rebase API checks at f760f70: 397 passed + one optional browser skip;
+  35 API/browser tests passed, five required GitHub checks pass. Real offline HTTP
+  environment selection/step/export execution replay verified; execution enablement
+  correctly returns unavailable while #36 remains contract-only c367e3a.
+  Remaining execution semantics are tracked in Sanjiv issue #40. Runtime merge is
+  blocked on finished #36 and substantive review; no scheduled/applied-action proof.
