@@ -27,3 +27,28 @@ assumptions:
     unit: options
     why: D2 must show the alternatives considered; three are enough for an operator to see why the choice won.
     source: invented
+  - id: admission.max_restrictions
+    value: 3
+    unit: actions
+    why: Fix sets for one admission are searched up to three throttle / standby / off / interlock actions. Beyond that the answer is a displacement, and the search stays well under the 30 s ceiling.
+    source: invented
+  - id: admission.alternatives_reported
+    value: 4
+    unit: options
+    why: The ranked yes-if list shows the chosen fix plus up to four costlier ones.
+    source: invented
+  - id: time.s_per_min
+    value: 60
+    unit: s/min
+    why: Unit conversion.
+    source: definition
+  - id: time.min_per_h
+    value: 60
+    unit: min/h
+    why: Unit conversion.
+    source: definition
+  - id: time.s_per_h
+    value: 3600
+    unit: s/h
+    why: Unit conversion.
+    source: definition
