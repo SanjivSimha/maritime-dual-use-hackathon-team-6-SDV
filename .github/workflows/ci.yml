@@ -55,3 +55,4 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked
       - run: make test
+# ownership-check test

@@ -10,3 +10,4 @@ assumptions:
     unit: model
     why: A.2 gives 160 kW at 12 °C and 120 kW at 30 °C, "falling linearly". We clamp outside 12-30 °C to the end values (no extrapolation).
     source: A.2 + clamp invented
+# ownership-check test
