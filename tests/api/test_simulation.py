@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from shipos.api import adapter
 from shipos.api.server import create_app
 from shipos.contracts import Envelope
+from shipos.data import load_guests, load_priorities
 from shipos.sim.log import chain_line
 
 
@@ -172,3 +173,136 @@ def test_fast_forward_rolls_back_whole_command_on_later_invalid_timeline_event(c
     assert response.status_code == 422 and "reduce" in response.json()["detail"]
     assert evidence(client, sid) == saved
     assert client.get(f"/api/sessions/{sid}").json() == state
+
+
+def test_priority_catalog_patrol_callback_replay_and_rejected_keys(client, monkeypatch):
+    from shipos.api import server
+    from shipos.engine import admission
+
+    state = new(client)
+    sid = state["id"]
+    assert "patrol" in state["priorities"]
+    patrol = load_priorities("patrol")
+    cmd(client, sid, op="admit", card="G4", value=0.9)
+    real_decide, seen = admission.decide, []
+
+    def observed(ship, manifests, snapshot, card, priorities, envelope):
+        seen.append(priorities.model_dump(mode="json"))
+        return real_decide(ship, manifests, snapshot, card, priorities, envelope)
+
+    def no_priority_reads(*args, **kwargs):
+        raise AssertionError("Selection/replay must use captured catalog/record inputs")
+
+    monkeypatch.setattr(admission, "decide", observed)
+    monkeypatch.setattr(server, "load_priorities", no_priority_reads)
+    monkeypatch.setattr(adapter, "load_priorities", no_priority_reads)
+    state = cmd(client, sid, op="priority", priority="patrol")
+    expected = patrol.model_dump(mode="json")
+    assert state["priority"] == expected and state["priority_name"] == "patrol"
+    assert seen == [expected]
+    saved = evidence(client, sid)
+    record = json.loads(saved["jsonl"].splitlines()[-1])["record"]
+    assert record["injected_events"][0]["payload"] == {"priorities": expected}
+    assert adapter.replay_evidence(saved)["byte_identical"]
+    assert seen[-1] == expected
+    for name in ["unknown", "../patrol", "..\\patrol", "patrol.yaml", "C:/patrol", ""]:
+        response = client.post(
+            f"/api/sessions/{sid}/commands", json={"op": "priority", "priority": name}
+        )
+        assert response.status_code == 422
+        assert client.get(f"/api/sessions/{sid}").json() == state
+        assert evidence(client, sid) == saved
+
+
+def test_mode_switch_preserves_b_and_starts_fresh_runner_then_reset_restores_a(client):
+    sid = new(client)["id"]
+    baseline_a = evidence(client, sid)
+    cmd(client, sid, op="scenario", scenario="B")
+    baseline_b = evidence(client, sid)
+    cmd(client, sid, op="admit", card="G2", value=3.5)
+    cmd(client, sid, op="priority", priority="patrol")
+    cmd(client, sid, op="event", event="battery_report", battery_pct=13)
+    for mode in ["SAMPLE", "LIVE"]:
+        state = cmd(client, sid, op="mode", mode=mode)
+        assert state["scenario"] == "B" and state["mode"] == mode
+        assert state["next_t_s"] == 0 and state["history"] == []
+        assert state["proposed_cards"] == {} and state["unavailable"] == []
+        assert state["snapshot"]["guests"]["G4"]["battery_pct"] == 30
+        assert evidence(client, sid) == baseline_b
+        if mode == "SAMPLE":
+            assert "SAMPLE" in state["notice"]
+            preview = cmd(client, sid, op="arbitration")
+            assert preview["decision"]["rationale"].startswith("SAMPLE")
+        else:
+            assert "LIVE" in state["notice"]
+            unavailable = cmd(client, sid, op="arbitration")
+            assert unavailable["decision"] is None
+            assert "unavailable" in unavailable["notice"]
+        assert evidence(client, sid) == baseline_b
+    reset = cmd(client, sid, op="reset")
+    assert reset["scenario"] == "A" and reset["mode"] == "LIVE"
+    assert evidence(client, sid) == baseline_a
+
+
+def test_complete_unfamiliar_card_real_admission_export_replay_reset(client, monkeypatch):
+    from shipos.engine import admission
+
+    sid = new(client)["id"]
+    raw = load_guests()["G4"].model_dump(mode="json")
+    raw["id"] = "JUDGE_DRONE"
+    raw["name"] = "Judge rescue drone"
+    next(m for m in raw["modes"] if m["name"] == "charging")["power_kw"] = 41
+    real_decide, seen = admission.decide, []
+
+    def observed(ship, manifests, snapshot, card, priorities, envelope):
+        seen.append(card.model_dump(mode="json"))
+        return real_decide(ship, manifests, snapshot, card, priorities, envelope)
+
+    monkeypatch.setattr(admission, "decide", observed)
+    state = cmd(client, sid, op="import_card", card_json=json.dumps(raw))
+    assert seen == [raw]
+    assert state["decision"]["subject"] == raw["id"]
+    assert state["decision"]["binding"] and state["decision"]["rationale"]
+    assert raw["id"] not in state["manifests"] and raw["id"] not in state["snapshot"]["guests"]
+    assert state["proposed_cards"][raw["id"]] == raw
+    saved = evidence(client, sid)
+    record = json.loads(saved["jsonl"].splitlines()[-1])["record"]
+    assert record["injected_events"][0]["payload"] == {"card": raw}
+
+    def no_card_files(*args, **kwargs):
+        raise AssertionError("Replay must use embedded card, not guest files")
+
+    monkeypatch.setattr(adapter, "load_guests", no_card_files)
+    assert adapter.replay_evidence(saved)["byte_identical"]
+    assert seen[-1] == raw
+    monkeypatch.undo()
+    reset = cmd(client, sid, op="reset")
+    assert raw["id"] not in reset["guests"] and reset["proposed_cards"] == {}
+
+
+def test_complete_card_rejections_preserve_state_and_evidence(client):
+    sid = new(client)["id"]
+    cmd(client, sid, op="admit", card="G4", value=0.9)
+    before = client.get(f"/api/sessions/{sid}").json()
+    saved = evidence(client, sid)
+    raw = load_guests()["G4"].model_dump(mode="json")
+    texts = ["{", "null", "[]", "{}"]
+    for field, value in [
+        ("mass_t", float("nan")),
+        ("mass_t", float("inf")),
+        ("mass_t", "NaN"),
+        ("mass_t", "$unknown.assumption"),
+        ("modes", "broken"),
+        ("initial_mode", "missing"),
+        ("id", "G1"),
+    ]:
+        texts.append(json.dumps({**raw, field: value}))
+    texts.append(json.dumps(raw).replace('"mass_t": 0.9', '"mass_t": 1e999'))
+    for text in texts:
+        result = client.post(
+            f"/api/sessions/{sid}/commands", json={"op": "import_card", "card_json": text}
+        )
+        assert result.status_code == 422, result.text
+        assert result.json()["detail"]
+        assert client.get(f"/api/sessions/{sid}").json() == before
+        assert evidence(client, sid) == saved

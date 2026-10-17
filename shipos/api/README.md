@@ -13,17 +13,45 @@ replace it with `uv` where installed on PATH. Sessions are isolated and in memor
 use one server worker. Restarting loses sessions. Canonical exports contain no
 session IDs or wall-clock latency. Snapshot response-time gauge remains unavailable.
 
+Complete judge-card import example:
+
+In LIVE Scenario A select G4 and click **Load selected card JSON**. The editor
+contains the complete resolved manifest. Set `id` to `JUDGE_DRONE` and change
+the `charging` mode's `power_kw` from 35 to 41, then click **Validate and admit
+complete card**. This unfamiliar ID and non-mass edit reach real admission through
+`card_presented`; the original G4 manifest and installed guests remain unchanged.
+The same complete example can be generated for pasting with:
+
+```powershell
+.\.tools\uv.exe run --locked python -c "import json; from shipos.data import load_guests; c=load_guests()['G4'].model_dump(mode='json'); c['id']='JUDGE_DRONE'; next(m for m in c['modes'] if m['name']=='charging')['power_kw']=41; print(json.dumps(c,indent=2))"
+```
+
+Click **Verify and execution-replay**, then export the evidence bundle. It embeds
+the full unfamiliar card, so replay does not load a repository file for that card.
+Reset removes it. The API command is `{"op":"import_card","card_json":"<complete JSON text>"}`.
+Malformed JSON, missing fields, invalid references/structures, nonfinite numbers,
+unresolved `$...` references, and installed-ID collisions return readable errors
+without committing snapshot/proposed-card/history/log changes. Validation uses
+GuestManifest and the existing guest_errors helper; it does not certify new
+physics or guarantee that every edit changes the verdict. No new assumptions are
+accepted or resolved by this JSON path. The quick body-mass editor still works.
+
 Tested interaction sequence:
 
 1. Start in LIVE Scenario A. Select G4, evaluate body mass 0.9 t: real D1 returns
    yes_if with placement and engine evidence. Change it to 20 t: no, binding on
    the hangar mass limit. Incumbent manifests and installed equipment are unchanged.
-2. Select SAR priority or crew 6. Each becomes an injected priority_swap/crew_change
+2. Select SAR/patrol priority or crew 6. Priority options come from validated YAML
+   entries in the fixed repository `data/priorities/` directory. Selection only
+   accepts an existing catalog key; unknown names and path traversal are rejected
+   without committing session state or evidence. Each change becomes a priority_swap/crew_change
    event and reruns admission for proposed cards. Complete loaded PriorityFile and
    GuestManifest mappings are recorded, not just file names or changed numbers.
 3. Reset restores LIVE A, original inputs, seed 0, empty proposed cards/history,
    initial runner log/hash, priority and crew. Selecting a scenario or preview mode
-   also starts a fresh runner and replay. B's documented YAML seed is 6.
+   also starts a fresh runner and replay. Mode-only changes preserve the selected
+   scenario: B → SAMPLE → LIVE remains B, with a fresh B baseline each time.
+   Explicit Reset still restores A. B's documented YAML seed is 6.
 4. Select B (LIVE simulator), enter battery report 13, inject battery report.
    G4's actual snapshot percentage changes at t=0; its mode remains flying.
    D3 is explicitly unavailable. First step emits initial.t_s; later steps advance

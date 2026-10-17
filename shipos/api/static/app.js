@@ -59,6 +59,7 @@ function render(data) {
   const selected = proposed.some(g => g.id === oldCard) ? oldCard : proposed[0]?.id;
   options($("card"), proposed.map(g => [g.id, `${g.id} · ${g.name}`]), selected);
   if (selected !== oldCard || oldMass !== state.guests[selected]?.mass_t || !$("value").value) fillMass();
+  if (!$("cardJson").value) fillCardJson();
   $("admit").querySelector("button").disabled = !selected;
   $("gauges").replaceChildren(...state.gauges.map(g => {
     const box = node("article", undefined, "gauge");
@@ -157,11 +158,19 @@ $("admit").onsubmit = event => {
   event.preventDefault();
   command({op: "admit", card: $("card").value, value: Number($("value").value)});
 };
-$("card").onchange = fillMass;
+function fillCardJson() {
+  $("cardJson").value = state.guests[$("card").value] ? json(state.guests[$("card").value]) : "";
+}
+$("card").onchange = () => { fillMass(); fillCardJson(); };
+$("loadCardJson").onclick = fillCardJson;
+$("importCard").onsubmit = event => {
+  event.preventDefault();
+  command({op: "import_card", card_json: $("cardJson").value});
+};
 for (const id of ["mode", "scenario", "priority", "crew"]) {
   $(id).onchange = () => command({op: id, [id]: id === "crew" ? Number($(id).value) : $(id).value});
 }
-$("reset").onclick = () => { $("value").value = ""; command({op: "reset"}); };
+$("reset").onclick = () => { $("value").value = ""; $("cardJson").value = ""; command({op: "reset"}); };
 document.querySelectorAll("[data-op]").forEach(b => b.onclick = () => command({op: b.dataset.op}));
 document.querySelectorAll("[data-event]").forEach(b => b.onclick = () => command({
   op: "event", event: b.dataset.event, battery_pct: Number($("battery").value)
