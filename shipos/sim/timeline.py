@@ -33,6 +33,16 @@ class PrioritySwap(Payload):
     priorities: PriorityFile
 
 
+class OperatorConfirmation(Payload):
+    by: str = Field(min_length=1)
+
+
+class BatteryForecast(Payload):
+    guest_id: str
+    issued_s: float = Field(ge=0)
+    land_by_s: float = Field(ge=0)
+
+
 class CrewChange(Payload):
     crew: int = Field(ge=0)
 
@@ -44,6 +54,8 @@ PAYLOADS = {
     "card_presented": CardPresented,
     "priority_swap": PrioritySwap,
     "crew_change": CrewChange,
+    "operator_confirmation": OperatorConfirmation,
+    "battery_forecast": BatteryForecast,
 }
 
 

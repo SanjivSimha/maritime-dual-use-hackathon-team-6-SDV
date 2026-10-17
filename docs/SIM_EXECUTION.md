@@ -1,13 +1,213 @@
 # Deterministic simulator execution
 
-Implementation in progress on baseline PR #35 (`d8bf25d60987b739a9ec53ef15293f48e4376676`).
+Execution is an explicit, offline Track B controller outside the pure decision callback.
+It applies real chosen D3/D4 plans. It does not install admitted cards, select options,
+execute alternatives/armed ladders/contingencies, or simulate unprovided operator input.
 
-Public integration seam (Track B only):
+## Public integration interface
 
-- `Runner(initial, *, ..., execution: bool = False)`
-- `load_scenario(path, *, decide=None, environment=None, execution: bool = False)`
-- `runner.execution_status`: defensive JSON-compatible status with `enabled`, `pending`, `applied`, `blocked`, `crew_gate`.
-- Callback `Context.protected: frozenset[str] = frozenset()` and `Context.recovery_confirm: str = "human"`.
-- `Event(t_s=runner.next_t_s, kind="operator_confirmation", payload={"by": "deck officer"})` records explicit input at that tick.
+```python
+Runner(initial, *, ship, manifests, priorities, timeline=(), seed=0,
+       profiles=None, decide=None, environment=None, execution: bool = False)
+load_scenario(path, *, decide=None, environment=None, execution: bool = False)
+runner.execution_status  # defensive JSON-compatible dict
+runner.reset()           # restores captured construction inputs; returns WorldSnapshot
+```
 
-Callbacks remain pure. Main must pass context.protected into shedding and context.recovery_confirm into arbitration. Execution is an opt-in orchestrator outside callbacks. Only chosen feasible D3/D4 options execute; alternatives/contingencies and admission installation do not. Execution replay will use an explicit new version; observation bytes remain unchanged. Full semantics, tests and reproduction will follow in this draft.
+The callback Context adds `protected: frozenset[str] = frozenset()` and
+`recovery_confirm: str = "human"`. Main must pass these to Track A's `protected=`
+and `confirm=` arguments respectively. The controller never modifies the callback
+or any Track A signature. With execution disabled these defaults retain old calls.
+
+`execution_status` contains `enabled`, `pending`, `applied`, `blocked`, `crew_gate`,
+protected IDs, reservations, anchored deadlines, supplied forecasts, shedding caps,
+crew evidence and generated-schedule identities. `pending` includes absolute due
+seconds, request start/duration, dependencies and chosen action payloads. `applied`
+is the completed-task audit for this run. `blocked` includes persistent semantic
+blockers and current task waits; task waits are refreshed each tick. It is evidence,
+not a way to edit the queue. Returned dictionaries and snapshots are defensive copies.
+
+Inputs use the existing Event contract and ordered public `step(events=())`:
+
+```python
+Event(t_s=runner.next_t_s, kind="operator_confirmation", payload={"by": "deck officer"})
+Event(
+    t_s=runner.next_t_s,
+    kind="battery_forecast",
+    payload={"guest_id": "G4", "issued_s": 0.0, "land_by_s": 1200.0},
+)
+```
+
+These event kinds require execution mode. An operator name must be nonempty.
+Battery forecasts are explicit caller-supplied planning inputs, not measurements
+or inferred weather. They must identify installed battery-equipped equipment, be
+finite whole seconds, already issued, and have land_by_s >= issued_s. Without one,
+early clearance reports the existing crew policy's unavailable/no_forecast result.
+
+## Tick order, crew and transactions
+
+Constructor-timeline events precede the ordered injected batch, unchanged from B2.
+Each event observes its intermediate snapshot: a same-tick crew change 14 -> 6 -> 14
+still invalidates a confirmation. Pending requests/actions and declared continuations
+then advance before the callback. New chosen zero-offset actions may apply after it.
+The canonical tick snapshot is the committed result; decisions describe their actual
+pre-action callback input. Every intermediate state, including fast-forwarded seconds,
+is passed through CrewEvidence.observe. A failed callback, invalid input or unavailable
+captured weather leaves snapshot, controller/queue, context, evidence, RNG, mode clocks,
+event cursor, next tick, log and hash unchanged.
+
+Preparation StateRequests have absolute start times and take effect only after their
+full duration. Acoustic hold completion applies the matching chosen, declared hold
+mode before dependent manoeuvres. Confirmation steps wait for both their modeled
+completion time and an explicit valid token; they never create a token. An operator
+input on a tick whose clearance has not yet committed is rejected, even if clearance
+will finish later in that tick. Occupation and crew changes discard tokens. Pending
+requests planned for a different crew report crew_changed_replan_required; a fresh
+engine plan is needed. The actual gate is checked again before flight-deck operations
+start, even if an earlier confirmation request already completed.
+
+Zero-crew evidence is reconstructed from each actual simulated deck state, stamped
+at that tick, with source `simulated_deck_state`. It is never a real sensor claim.
+An occupied zero-crew deck cannot be cleared by this controller. Human confirmation
+is not auto-generated by fast-forward, early clearance or a planned confirmation step.
+
+The landing deadline is `originating battery_report.t_s + Track A deadline_min(...) * 60`.
+Later reports cannot extend an outstanding deadline. Recovery must finish by that
+anchored deadline. Completion is recorded, after which a genuinely later report can
+anchor a new flight's deadline. A denial records the engine's outcome/risk; there is no
+invented ditch/removal state or fabricated completed landing.
+
+## Executable semantics and fail-closed boundaries
+
+Only `chosen.feasible` D3/D4 options with an executable verdict and no rejection are
+compiled. Unsupported/ambiguous plans queue nothing and record their exact reason.
+This is separate from a transaction failure: a valid engine decision can commit a
+non-actuating semantic blocker. All execution times must fit the simulator's 1 Hz grid.
+
+- keep preserves the incumbent clock. proceed starts a uniquely declared activity
+  after request dependencies, action offset, actual conditions and crew permission.
+- pause/suspend use the installed activity's matching PreemptOption, hold mode,
+  window, resume delay and rerun semantics. Resume preparation uses the existing
+  Track A planner; it does not invent an immediate return to surveying or charging.
+- throttle/standby/shed enter the explicit target mode at the action offset and hold
+  its power ceiling for the existing `shed.horizon_min` planning horizon. Future higher
+  modes wait under that cap; no automatic post-cap restoration is invented.
+- defer shifts the uniquely matching future target and its suffix, preserving all
+  earlier entries. The original suffix is captured; an intervening schedule change
+  blocks rather than applying a stale index. Multiple matching targets fail closed.
+- reserve records a declared-mode power reservation. It adds neither consumption nor
+  charging. Protected winners survive through the declared activity/follow-up chain;
+  reservations/protection are released at its terminal mode transition. A protected
+  winner or non-interruptible active mode cannot be shed or overridden by a schedule.
+- StateRequest variables supported: speed_kn, course, noise, deck, emission,
+  confirm:deck, a matching hold:<guest>, and deck_machinery=off. Machinery cannot simply
+  be labelled off while an active guest mode still declares it running. Unknown
+  variables, placement/removal/retask/interlock semantics and ambiguous activity starts
+  remain explicit blockers. A crew change does not silently retime preparation.
+
+Future schedules come only from caller inputs, selected actions and declared
+Mode.next_mode / Activity.followed_by. A next boundary is published to GuestRuntime
+only if its current state needs no additional preparation; it is a conditional intent,
+revalidated when due. Unknown preparation/confirmation completion is not guessed.
+Explicit schedules override a natural boundary at the same tick. Deferred generated
+entries retain their identity. Natural continuations needing preparation use the
+planner at completion and can be delayed/blocked. No engine-test schedule is imported.
+
+## Scenario B findings / precise Track A questions
+
+Baseline B inputs are unchanged. At t=480, 18% G4 battery anchors land_by_s=1200.
+With 14 crew, real D3 chooses G3 pause under survey and suspend under SAR. Acoustic
+hold completes at 540, the deck clears at 780, and speed/confirmation preparation is
+ready at 840. Without operator input G4 remains flying. Explicit confirmation at 841
+starts recovery; its declared 3-minute activity finishes at 1021. With the baseline
+occupied deck, 6 and 0 crew produce real D3 deny/risk outcomes, not a fabricated success.
+A separate clear-deck zero-crew test exercises real D3 with automatic simulated evidence.
+
+1. **No conflicting incumbent:** starting from B at t=0, set G3 to standby with no
+   activity, deck clear, speed=5, course=free, noise=manoeuvring, crew=0, then report
+   G4 battery=18. Real arbitration.decide(..., challenger='G4', challenger_activity='recovery',
+   confirm='automatic') returns winner G4 but chosen actions [keep G4, defer G4].
+   The defer delay includes approach time and does not identify a recovery start.
+   The controller blocks that ambiguous D3 deferral instead of turning KEEP into PROCEED.
+   Sanjiv must clarify/correct this output if recovery should start directly.
+2. **D3 deferral:** delay_min is remaining incumbent time + transition + approach, while
+   the action carries only to_mode. It is not an unambiguous activity start timestamp.
+   Such options fail closed. A specified start/meaning is needed from Sanjiv.
+3. **D4 repeated modes:** shedding._Move knows defer_index, but _action does not export
+   it. Repeated future entries of the same mode are ambiguous. Unique entries execute;
+   repeated entries need a Track A identification convention within existing facts.
+4. **Physical follow-ups:** G4 recovery is followed_by launch; launch enters flying.
+   It does not charge after landing in the current card. G3 pause AND suspend declare
+   holding then rerun, not a forced recovery/charging path. Thus baseline t=720 does
+   not magically produce the brief's charging overlap. Recovery-to-charge behavior or
+   different suspension semantics needs a card/Track A clarification, not a sim script.
+
+Controlled synthetic contract-edge tests explicitly label their inputs. The separate
+D4 tests create declared future charging inputs locally and invoke the real planner;
+these are not presented as baseline B or real weather evidence.
+
+## Replay and offline reproduction
+
+Observation mode retains v1/v2 bytes and the published 721-tick Scenario B hash
+`ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28`.
+Execution uses header version 3, execution=true, optional embedded captured weather,
+and controller evidence in every tick. Operator/forecast inputs are recorded at their
+exact ticks and reinjected automatically on execution replay. No cache path, network
+request, computer timezone or wall clock is read during stepping, reset or replay.
+Same compatible code, callback and assumption registry remain required; this is not
+an independently portable executable. Missing forecast weather coverage still fails
+transactionally; a reservation is not proof of future resource feasibility.
+
+Run from the repository root with `py -m uv run --offline python`, then paste:
+
+```python
+from pathlib import Path
+from shipos.contracts import Event
+from shipos.engine import arbitration, shedding
+from shipos.sim.runner import load_scenario, replay_jsonl
+
+
+def decide(snapshot, events, context):
+    for event in events:
+        if event.kind == "battery_report":
+            yield arbitration.decide(
+                context.ship,
+                context.manifests,
+                snapshot,
+                context.priorities,
+                event.payload["guest_id"],
+                "recovery",
+                confirm=context.recovery_confirm,
+            )
+        elif event.kind in ("genset_trip", "cooling_loss"):
+            yield shedding.plan(
+                context.ship,
+                context.manifests,
+                snapshot,
+                context.priorities,
+                protected=context.protected,
+            )
+
+
+runner = load_scenario(Path("data/scenarios/B.yaml"), decide=decide, execution=True)
+runner.run(841)  # through t=840: preparation complete; operator confirmation still pending
+assert runner.snapshot.guests["G4"].mode == "flying"
+runner.step(
+    [Event(t_s=runner.next_t_s, kind="operator_confirmation", payload={"by": "demo deck officer"})]
+)
+assert runner.snapshot.guests["G4"].mode == "recovery"
+runner.run(180)  # follows the declared recovery -> launch, never invented charging
+assert runner.snapshot.guests["G4"].mode == "launching"
+output = Path(".pytest_cache/execution.jsonl")
+output.parent.mkdir(exist_ok=True)
+output.write_bytes(runner.jsonl)
+replayed = replay_jsonl(output.read_bytes(), decide=decide)
+assert replayed.jsonl == runner.jsonl
+assert replayed.execution_status == runner.execution_status
+print(runner.final_hash, "byte-identical execution replay")
+```
+
+To add captured weather, pass the existing `environment=EnvironmentInput(...)` to
+Runner/loading; v3 embeds its entire record, including provenance, scenario start,
+layering and freshness choices. No original cache file is required for replay or reset.
+Main owns API wiring and Claude owns static UI; this PR edits neither.
