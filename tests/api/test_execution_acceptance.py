@@ -15,7 +15,7 @@ from shipos.api.server import create_app
 from shipos.sim.runner import Runner
 
 # Needs school's executor (PR #36). Without it the API refuses execution, so skip, not fail.
-pytestmark = pytest.mark.skipif(
+needs_execution = pytest.mark.skipif(
     not hasattr(Runner, "execution_status"), reason="simulator execution (PR #36) not present"
 )
 
@@ -88,6 +88,7 @@ def test_observation_horizon_and_tick_bound_are_unchanged(client):
     assert detail.isascii()
 
 
+@needs_execution
 @pytest.mark.parametrize(
     ("priority", "g3_action"), [("survey_primary", "pause"), ("sar_primary", "suspend")]
 )
@@ -129,6 +130,7 @@ def test_recovery_executes_after_preparation_and_operator_confirmation(client, p
     assert "1800 s" in rejected(client, sid, op="step")
 
 
+@needs_execution
 @pytest.mark.parametrize(
     ("crew", "gate_blocker"), [(6, "deck_occupied"), (0, "no_crew_to_clear_deck")]
 )
@@ -149,6 +151,7 @@ def test_reduced_crew_gets_the_engine_denial_not_a_landing(client, crew, gate_bl
     ]
 
 
+@needs_execution
 def test_captured_weather_execution_replays_and_reset_archives(client):
     sid, state = execution_run(client, environment=CACHE)
     assert state["environment"]["configuration"]["source"] == "strait_of_sicily"
