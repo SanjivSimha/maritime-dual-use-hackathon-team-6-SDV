@@ -1,0 +1,40 @@
+# Annex B — G2 Ocean & weather module.
+id: G2
+name: Ocean & weather module
+mass_t: "$guests.g2.body_mass_t"
+cooling: water                     # cooling = draw
+preferred: [bay2]
+allowed: [bay2, bay1_half]
+parts:
+  - {id: winch, name: winch, mass_t: "$guests.g2.winch_mass_t"}
+  - {id: probe, name: profiling probe, mass_t: "$guests.g2.probe_mass_t"}
+modes:
+  - {name: profiling, power_kw: 6}
+  - name: winch
+    power_kw: 20
+    duration_min: 5
+    next_mode: profiling
+    deferrable: true
+    deck_machinery: true
+    conditions:
+      speed_kn: {hi: 5}
+      course: steady
+      sea_state_max: 4
+      deck: clear                  # deck around bay clear
+  - {name: standby, tier: standby, power_kw: "$guests.g2.standby_kw", capability_factor: 0}
+  - {name: "off", tier: "off", power_kw: 0, capability_factor: 0}
+initial_mode: profiling
+excludes:
+  - {kind: conditional, mode: winch, target: G3, target_mode: surveying, reason: "winch is deck machinery and G3 is listening"}
+  - {kind: conditional, mode: winch, target: G3, target_mode: holding, reason: "winch is deck machinery and G3 is listening"}
+  - {kind: conditional, mode: winch, target: G4, target_mode: recovery, reason: "winch is deck machinery during drone recovery"}
+data:
+  - {link: backbone, mbps: 5}
+  - {link: satcom, mbps: 0.5}      # buffers when the link is short
+compute: {cores: "$compute.g2.cores", mem_gb: "$compute.g2.mem_gb"}
+capability:
+  name: water column, sound speed and sea state
+  value_by_mission: {survey: high}
+  default: medium
+  tags: [oceanography, environment]
+installation: {where: port_only, people: 4, hours: 6}

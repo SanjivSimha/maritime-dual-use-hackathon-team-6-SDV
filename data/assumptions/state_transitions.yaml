@@ -1,0 +1,22 @@
+class: State transitions
+assumptions:
+  - id: state.band_edge.stopped_slow_kn
+    value: 0.5
+    unit: kn
+    why: A.6 defines stopped and slow 3-5 kn; we call anything above 0.5 kn under way.
+    source: invented
+  - id: state.band_edge.slow_cruise_kn
+    value: 7.5
+    unit: kn
+    why: Midpoint of the 5-10 kn gap between A.6 bands.
+    source: invented
+  - id: state.band_edge.cruise_fast_kn
+    value: 16
+    unit: kn
+    why: Midpoint of the 14-18 kn gap between A.6 bands.
+    source: invented
+  - id: state.plan_on_upper_bound
+    value: true
+    unit: rule
+    why: Every A.6 transition is planned at its slowest value, so a deadline that passes on paper passes at sea.
+    source: invented

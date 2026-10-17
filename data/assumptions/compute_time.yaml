@@ -1,0 +1,14 @@
+class: Compute · Response time
+assumptions:
+  - {id: compute.g1.cores, value: 4, unit: cores, why: Signal processing for a passive RF sensor., source: invented}
+  - {id: compute.g1.mem_gb, value: 8, unit: GB, why: See compute.g1.cores., source: invented}
+  - {id: compute.g2.cores, value: 2, unit: cores, why: Profile processing and buffering., source: invented}
+  - {id: compute.g2.mem_gb, value: 4, unit: GB, why: See compute.g2.cores., source: invented}
+  - {id: compute.g3.cores, value: 8, unit: cores, why: Sonar and imagery post-processing on the cradle., source: invented}
+  - {id: compute.g3.mem_gb, value: 32, unit: GB, why: See compute.g3.cores., source: invented}
+  - {id: compute.g3.accelerators, value: 1, unit: accelerators, why: Imagery inference for cable / pipeline inspection., source: invented}
+  - {id: compute.g4.cores, value: 8, unit: cores, why: Video ingest and detection., source: invented}
+  - {id: compute.g4.mem_gb, value: 16, unit: GB, why: See compute.g4.cores., source: invented}
+  - {id: compute.g4.accelerators, value: 1, unit: accelerators, why: Person-in-water detection on drone video., source: invented}
+  - {id: compute.g5.cores, value: 4, unit: cores, why: The node brings its own edge compute; the rack only hosts its control plane., source: invented}
+  - {id: compute.g5.mem_gb, value: 16, unit: GB, why: See compute.g5.cores., source: invented}

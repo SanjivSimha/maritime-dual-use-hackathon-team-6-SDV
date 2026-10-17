@@ -1,0 +1,22 @@
+class: Mission priorities · Crew
+assumptions:
+  - id: priority.level.high
+    value: 1.0
+    unit: weight
+    why: Capability levels in the cards (high / medium / low) map to weights; high is the unit.
+    source: invented
+  - id: priority.level.medium
+    value: 0.5
+    unit: weight
+    why: Half of high.
+    source: invented
+  - id: priority.level.low
+    value: 0.2
+    unit: weight
+    why: Low but not zero, so a low-priority guest still beats nothing.
+    source: invented
+  - id: priority.mission_critical_threshold
+    value: 0.8
+    unit: weight
+    why: Mission-critical is derived from the priority file (B.0), not a stored boolean; only "high" guests qualify.
+    source: invented

@@ -13,7 +13,8 @@ touching `shipos/engine` or `shipos/physics`.
 1. **No numeric literals in `shipos/engine/` or `shipos/physics/`** except 0 and ±1. Read numbers
    with `A("<id>")` and add the entry to `data/assumptions/<class>.yaml` with `value, unit, range,
    why, source`. Annex A/B values go in `data/ship/` and `data/guests/`. A deliberate literal needs
-   `# literal-ok: <reason>` on its line.
+   `# literal-ok: <reason>` on its line. In YAML, an invented value is written `"$<id>"` and
+   resolved by `shipos/data.py`; `tests/test_contracts.py` fails on any unknown reference.
 2. **Engine is pure**: no `time.time()`, `datetime.now()`, `random`, file or network I/O inside
    `shipos/engine/`. Time arrives via `WorldSnapshot.t`; the sim clock is injected.
 3. **Every `Decision` sets `binding`**; rationale text only comes from `rationale.render()`.
@@ -22,6 +23,14 @@ touching `shipos/engine` or `shipos/physics`.
 5. **Tests first.** Golden scenario tests compute expected values from Annex inputs; never paste
    an engine output as the expected value.
 6. **Determinism**: same seed + timeline → identical decision-log hash.
+
+## Contracts (frozen after PR #2)
+- `shipos/contracts.py` — ShipSpec, GuestManifest, WorldSnapshot, Decision and friends.
+- Loaders: `shipos/data.py` (`load_ship`, `load_guests`, `load_priorities`, `load_envelope`).
+- Engine entry points (signatures fixed): `engine.admission.decide`, `engine.placement.decide`,
+  `engine.arbitration.decide`, `engine.shedding.plan`, `engine.rationale.render`.
+- Sample outputs for UI/sim work before the engine lands: `tests/fixtures/*.json`
+  (regenerate with `uv run python -m tools.make_fixtures`).
 
 ## Ownership (keeps parallel agents out of each other's files)
 - Person A — `shipos/physics/`, `shipos/engine/`, `shipos/statemachine.py`

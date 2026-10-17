@@ -1,0 +1,54 @@
+class: Electrical power
+assumptions:
+  - id: power.reserve.stopped.two_gensets
+    value: 200
+    unit: kW
+    range: [150, 250]
+    why: Annex gives the reserve only at cruise; stopped/slow propulsion load is lower, but we do not credit it (conservative, same as cruise).
+    source: narrowed from A.1
+  - id: power.reserve.stopped.one_genset
+    value: 100
+    unit: kW
+    range: [90, 120]
+    why: Same as cruise with one genset down; Scenario B quotes ~100 kW at 3 kn, consistent.
+    source: narrowed from A.1 / A.9
+  - id: power.reserve.slow.two_gensets
+    value: 200
+    unit: kW
+    range: [150, 250]
+    why: Not credited above cruise (conservative); A.10 says use the lower reserve of slow/cruise.
+    source: narrowed from A.1
+  - id: power.reserve.slow.one_genset
+    value: 100
+    unit: kW
+    range: [90, 120]
+    why: Scenario B states the reserve halves to about 100 kW at 3 kn.
+    source: A.9 / Scenario B
+  - id: power.reserve.fast.two_gensets
+    value: 150
+    unit: kW
+    range: [150, 250]
+    why: Fast (>18 kn) propulsion load is highest, so take the bottom of the A.1 range. Fast is outside the default envelope.
+    source: narrowed from A.1
+  - id: power.reserve.fast.one_genset
+    value: 75
+    unit: kW
+    range: [50, 100]
+    why: Half of the fast two-genset value, by analogy with cruise (200 → 100).
+    source: invented
+  - id: power.line_lost_on_trip
+    value: stbd
+    unit: line
+    why: A.9 lets us choose; we lose the stbd line with genset 2. Guests on stbd transfer to port via the bus-tie, so with one genset down the surviving line carries everything (still ≤ 150 kW).
+    source: choice per A.9
+  - id: power.degraded_spinning_reserve_kw
+    value: 0
+    unit: kW
+    range: [0, 25]
+    why: The A.9 ~100 kW is already the guests' share net of hotel load, so we do not hold back more by default. Raise it (e.g. to 20 kW ≈ the 10-20 % overdraw the brief warns of) to keep the last genset off its limit; D4 then sheds earlier.
+    source: invented (policy knob)
+  - id: power.bus_tie_transfer
+    value: true
+    unit: bool
+    why: Needed for line_lost_on_trip; without a bus-tie, guests on the lost line would lose power at the trip.
+    source: invented

@@ -1,0 +1,30 @@
+# Annex B — G5 Emergency comms & edge compute node.
+id: G5
+name: Emergency comms & edge compute node
+mass_t: 3.0
+cooling: water
+preferred: [bay2]
+allowed: [bay2, bay1_half]
+parts:
+  - {id: antenna, name: comms antenna, mass_t: 0.025, area_m2: 0.3,
+     height_m: "$guests.g5.antenna_height_m", allowed: [mast, hangar_roof], preferred: [mast]}
+modes:
+  - name: "on"
+    power_kw: 45
+    conditions: {emission: normal}
+  - {name: low_power, tier: low_power, power_kw: 8, capability_factor: 0.3}
+  - {name: "off", tier: "off", power_kw: 0, capability_factor: 0}
+initial_mode: "on"
+excludes:
+  - {kind: absolute, target: "emission:silent", reason: "the node transmits continuously"}
+data:
+  - {link: satcom, mbps: 6}        # up to 6 of 8 Mbit/s
+  - {link: backbone, mbps: 1000}
+compute: {cores: "$compute.g5.cores", mem_gb: "$compute.g5.mem_gb"}
+capability:
+  name: restores coastal connectivity
+  value_by_mission: {rescue: high, disaster_relief: high}
+  default: low
+  tags: [comms, connectivity, edge_compute]
+installation: {where: port_only, people: 4, hours: 6}
+logical_reconfig: new analytics workload on the edge compute node

@@ -1,0 +1,75 @@
+{
+  "t_s": 0.0,
+  "ship": {
+    "speed_kn": 0.0,
+    "course": "free",
+    "noise": "normal",
+    "deck": "occupied",
+    "emission": "normal",
+    "deck_machinery_active": false,
+    "flight_deck_in_use": false,
+    "ramp_in_use": false
+  },
+  "platform": {
+    "gensets_online": 2,
+    "cooling_degraded": false,
+    "situation": "port"
+  },
+  "env": {
+    "seawater_c": 16.0,
+    "sea_state": 1.0,
+    "wind_kn": 8.0,
+    "layered_water": false,
+    "forecast": []
+  },
+  "crew": 14,
+  "guests": {
+    "G1": {
+      "id": "G1",
+      "mode": "on",
+      "placement": {
+        "slots": {
+          "body": "mast3"
+        },
+        "line": "stbd"
+      },
+      "schedule": [],
+      "activity": null,
+      "activity_started_s": null,
+      "battery_pct": null,
+      "measured_kw": null
+    },
+    "G2": {
+      "id": "G2",
+      "mode": "profiling",
+      "placement": {
+        "slots": {
+          "body": "bay2"
+        },
+        "line": "stbd"
+      },
+      "schedule": [],
+      "activity": null,
+      "activity_started_s": null,
+      "battery_pct": null,
+      "measured_kw": null
+    },
+    "G5": {
+      "id": "G5",
+      "mode": "on",
+      "placement": {
+        "slots": {
+          "body": "bay1a",
+          "antenna": "hangar_roof"
+        },
+        "line": "port"
+      },
+      "schedule": [],
+      "activity": null,
+      "activity_started_s": null,
+      "battery_pct": null,
+      "measured_kw": null
+    }
+  },
+  "mission_days_left": 14.0
+}

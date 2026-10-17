@@ -1,0 +1,86 @@
+{
+  "kind": "arbitration",
+  "subject": "G4 vs G3",
+  "verdict": "decided",
+  "binding": {
+    "cls": "time",
+    "resource": "time.landing_deadline",
+    "capacity": 12.0,
+    "demand": 32.0,
+    "unit": "min",
+    "corner": "",
+    "hard": true,
+    "contributors": {},
+    "facts": {
+      "waiting_for": "end of survey leg"
+    }
+  },
+  "chosen": {
+    "name": "G4 recovers; G3 pauses",
+    "actions": [
+      {
+        "guest": "G3",
+        "kind": "pause",
+        "to_mode": "holding",
+        "other": null,
+        "when": "always",
+        "capability_lost": 0.0,
+        "kw_recovered": 0.0,
+        "delay_min": 0.0,
+        "t_offset_s": 0.0,
+        "facts": {}
+      },
+      {
+        "guest": "G4",
+        "kind": "proceed",
+        "to_mode": "recovery",
+        "other": null,
+        "when": "always",
+        "capability_lost": 0.0,
+        "kw_recovered": 0.0,
+        "delay_min": 0.0,
+        "t_offset_s": 0.0,
+        "facts": {}
+      }
+    ],
+    "feasible": true,
+    "cost": 27.6,
+    "cost_contingent": 0.0,
+    "binding": null,
+    "rejected_because": null,
+    "costs": []
+  },
+  "alternatives": [],
+  "placement": {},
+  "state_requests": [
+    {
+      "variable": "speed_kn",
+      "to": "5",
+      "start_s": 60.0,
+      "duration_s": 120.0
+    },
+    {
+      "variable": "deck",
+      "to": "clear",
+      "start_s": 0.0,
+      "duration_s": 360.0
+    }
+  ],
+  "winner": "G4",
+  "loser": "G3",
+  "costs": [
+    {
+      "guest": "G3",
+      "amount": 23.0,
+      "unit": "survey-min",
+      "what": "15-min pause + leg re-run"
+    }
+  ],
+  "holds_one_genset_down": null,
+  "contingency": [],
+  "next_window": null,
+  "checks": [],
+  "rationale": "SAMPLE — real rationale is rendered by engine/rationale.py",
+  "latency_ms": null,
+  "t_s": 480.0
+}

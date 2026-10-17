@@ -1,0 +1,23 @@
+# Annex B — G1 Passive radio sensor. "$<id>" = assumption (data/assumptions/).
+id: G1
+name: Passive radio sensor
+mass_t: 0.045
+area_m2: 0.5
+cooling: air                       # mast: no manifold, air-cooled (A.2)
+preferred: [mast]
+allowed: [mast]
+modes:
+  - {name: "on", power_kw: 1.5}
+  - {name: "off", tier: "off", power_kw: 0, capability_factor: 0}
+initial_mode: "on"
+data:
+  - {link: backbone, mbps: 50}
+  - {link: satcom, mbps: 0.2}
+compute: {cores: "$compute.g1.cores", mem_gb: "$compute.g1.mem_gb"}
+capability:
+  name: detects non-identifying transmitting vessels
+  value_by_mission: {patrol: high, survey: low}
+  default: low
+  tags: [surveillance, rf]
+installation: {where: port_only, people: 2, hours: 3}
+radar_sensitivity_loss: 0.3        # 30 % loss if own radar transmits nearby

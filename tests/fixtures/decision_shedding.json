@@ -1,0 +1,59 @@
+{
+  "kind": "shedding",
+  "subject": "genset_trip",
+  "verdict": "shed",
+  "binding": {
+    "cls": "power",
+    "resource": "power.total",
+    "capacity": 100.0,
+    "demand": 106.5,
+    "unit": "kW",
+    "corner": "one genset down",
+    "hard": true,
+    "contributors": {},
+    "facts": {}
+  },
+  "chosen": {
+    "name": "defer G3 charge",
+    "actions": [
+      {
+        "guest": "G3",
+        "kind": "defer",
+        "to_mode": "charging",
+        "other": null,
+        "when": "always",
+        "capability_lost": 1.0,
+        "kw_recovered": 0.0,
+        "delay_min": 5.0,
+        "t_offset_s": 1.0,
+        "facts": {}
+      }
+    ],
+    "feasible": true,
+    "cost": 0.0,
+    "cost_contingent": 0.0,
+    "binding": null,
+    "rejected_because": null,
+    "costs": []
+  },
+  "alternatives": [],
+  "placement": {},
+  "state_requests": [],
+  "winner": null,
+  "loser": null,
+  "costs": [
+    {
+      "guest": "G3",
+      "amount": 5.0,
+      "unit": "survey-min",
+      "what": "charge deferred"
+    }
+  ],
+  "holds_one_genset_down": null,
+  "contingency": [],
+  "next_window": null,
+  "checks": [],
+  "rationale": "SAMPLE — real rationale is rendered by engine/rationale.py",
+  "latency_ms": null,
+  "t_s": 720.0
+}

@@ -1,0 +1,37 @@
+class: Positions
+assumptions:
+  - id: positions.bay1_half_max_mass_t
+    value: 4
+    unit: t
+    why: Bay 1 is ≤ 8 t as a whole; we split it evenly between its two 10-ft halves.
+    source: invented
+  - id: positions.hangar_max_mass_t
+    value: 1.2
+    unit: t
+    why: The A.3 hangar takes one VTOL ≤ 150 kg; the G4 hangar module (900 kg) plus drone (140 kg) must fit, plus a little margin.
+    source: invented
+  - id: positions.hangar_roof_max_mass_t
+    value: 0.03
+    unit: t
+    why: The hangar roof takes only a small antenna (G5's 25 kg). B.G5 names the roof as an alternative to the mast.
+    source: invented
+  - id: positions.hangar_roof_max_area_m2
+    value: 0.5
+    unit: m²
+    why: Roughly a mast footprint (0.6 m²), slightly smaller.
+    source: invented
+  - id: positions.hangar_roof_max_antenna_height_m
+    value: 0.5
+    unit: m
+    why: Drone clearance check for the hangar roof; an antenna ≤ 0.5 m stays below the drone's approach path.
+    source: invented
+  - id: positions.mast3_near_radar
+    value: true
+    unit: bool
+    why: The only free mast slot sits next to the navigation radar, so G1 loses 30 % unless the radar is quiet (B.G1).
+    source: invented
+  - id: positions.bay1_sharing
+    value: two 10-ft halves or one 20-ft
+    unit: rule
+    why: A.3, if neither guest needs the bay clear. None of the five cards needs it.
+    source: A.3

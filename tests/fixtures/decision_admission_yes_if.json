@@ -1,0 +1,89 @@
+{
+  "kind": "admission",
+  "subject": "G4",
+  "verdict": "yes_if",
+  "binding": {
+    "cls": "power",
+    "resource": "power.total",
+    "capacity": 100.0,
+    "demand": 101.5,
+    "unit": "kW",
+    "corner": "slow, 30 °C, one genset down",
+    "hard": true,
+    "contributors": {
+      "G1": 1.5,
+      "G2": 20.0,
+      "G4": 35.0,
+      "G5": 45.0
+    },
+    "facts": {}
+  },
+  "chosen": {
+    "name": "interlock G2 winch / G4 charging",
+    "actions": [
+      {
+        "guest": "G2",
+        "kind": "interlock",
+        "to_mode": "winch",
+        "other": "G4.charging",
+        "when": "degraded",
+        "capability_lost": 0.05,
+        "kw_recovered": 0.0,
+        "delay_min": 0.0,
+        "t_offset_s": 0.0,
+        "facts": {}
+      }
+    ],
+    "feasible": true,
+    "cost": 0.0,
+    "cost_contingent": 0.0,
+    "binding": null,
+    "rejected_because": null,
+    "costs": []
+  },
+  "alternatives": [
+    {
+      "name": "G5 low-power when one genset is down",
+      "actions": [
+        {
+          "guest": "G5",
+          "kind": "throttle",
+          "to_mode": "low_power",
+          "other": null,
+          "when": "degraded",
+          "capability_lost": 0.14,
+          "kw_recovered": 37.0,
+          "delay_min": 0.0,
+          "t_offset_s": 0.0,
+          "facts": {}
+        }
+      ],
+      "feasible": true,
+      "cost": 0.0,
+      "cost_contingent": 0.14,
+      "binding": null,
+      "rejected_because": null,
+      "costs": []
+    }
+  ],
+  "placement": {
+    "G4": {
+      "slots": {
+        "body": "hangar",
+        "drone": "hangar"
+      },
+      "line": "port"
+    }
+  },
+  "state_requests": [],
+  "winner": null,
+  "loser": null,
+  "costs": [],
+  "holds_one_genset_down": false,
+  "contingency": [],
+  "next_window": null,
+  "checks": [],
+  "rationale": "SAMPLE — real rationale is rendered by engine/rationale.py",
+  "latency_ms": null,
+  "t_s": 0.0
+}
