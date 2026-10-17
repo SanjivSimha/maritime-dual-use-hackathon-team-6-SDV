@@ -163,6 +163,15 @@ svg text { fill: var(--text); font: 12px "Segoe UI", system-ui, sans-serif; }
 .status .k-blocked { color: var(--bad); }
 .status .na { color: var(--na); font-style: italic; }
 
+.envform { display: grid; gap: 10px; margin-top: 8px; }
+.cachefields { border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 10px; margin: 0; }
+.cachefields[disabled] { opacity: .55; }
+.cachefields input[type=number] { width: 100%; }
+#environmentView { margin-top: 10px; }
+#environmentView:empty { display: none; }
+.runs { margin: 6px 0 0; padding-left: 20px; font-size: 13px; }
+.runs li { padding: 2px 0; }
+
 @media (max-width: 1000px) {
   .workspace, .split { grid-template-columns: 1fr; }
   .gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
