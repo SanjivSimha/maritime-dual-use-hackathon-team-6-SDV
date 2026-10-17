@@ -12,6 +12,7 @@ modes:
   - {name: flying, power_kw: 2}
   - name: recovery
     power_kw: 2
+    deck_machinery: true           # hangar doors (A.6: deck machinery)
     conditions: &flight_ops
       speed_kn: {lo: 5, hi: 12}
       deck: clear
@@ -23,6 +24,7 @@ modes:
     power_kw: 2
     duration_min: "$guests.g4.launch_min"
     next_mode: flying
+    deck_machinery: true
     conditions: *flight_ops
   - {name: charging, power_kw: 35, duration_min: 20, next_mode: topping}
   - {name: topping, power_kw: 10, duration_min: "$guests.g4.topping_min", next_mode: standby}
