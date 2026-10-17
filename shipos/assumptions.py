@@ -30,7 +30,7 @@ class Assumption:
 def load_registry(directory: Path) -> dict[str, Assumption]:
     registry: dict[str, Assumption] = {}
     for path in sorted(directory.glob("*.yaml")):
-        doc = yaml.safe_load(path.read_text()) or {}
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for entry in doc.get("assumptions", []):
             aid = entry["id"]
             if aid in registry:
