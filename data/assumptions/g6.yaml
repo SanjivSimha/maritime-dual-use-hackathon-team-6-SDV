@@ -1,0 +1,106 @@
+class: G6 towed passive acoustic array
+# G6 is the team's own card (docs/PLAN.md B1), not an Annex B guest: every number on it is invented
+# and lives here. Values follow the PLAN recommendation (2.5 t, 4 kW, needs quiet, excludes winch).
+assumptions:
+  - id: guests.g6.body_mass_t
+    value: 2.5
+    unit: t
+    range: [1.5, 3.5]
+    why: Cable drum with tow winch, ~1 km of tow cable, array and recorder rack in one deck module.
+    source: invented (docs/PLAN.md B1 recommendation)
+  - id: guests.g6.listening_kw
+    value: 4
+    unit: kW
+    range: [2, 6]
+    why: Hydrophone pre-amplifiers, digitiser and recorder rack while the array is streamed.
+    source: invented (docs/PLAN.md B1 recommendation)
+  - id: guests.g6.standby_kw
+    value: 0.5
+    unit: kW
+    range: [0.2, 1]
+    why: Recorder rack idle and drum brake held; also the draw while the array is streamed but not recording.
+    source: invented
+  - id: guests.g6.winch_kw
+    value: 15
+    unit: kW
+    range: [10, 20]
+    why: Tow winch paying out or hauling in the cable over the stern ramp; below G2's 20 kW CTD winch because the load is lighter.
+    source: invented
+  - id: guests.g6.deploy_min
+    value: 20
+    unit: min
+    range: [15, 30]
+    why: Stream the array and pay out the tow cable to working length at tow speed.
+    source: invented
+  - id: guests.g6.recover_min
+    value: 20
+    unit: min
+    range: [15, 30]
+    why: Haul in the cable and recover the array up the ramp; same length as deployment.
+    source: invented
+  - id: guests.g6.transect_min
+    value: 120
+    unit: min
+    range: [60, 240]
+    why: One listening transect long enough for a useful marine-mammal and ambient-noise record.
+    source: invented
+  - id: guests.g6.tow_speed_lo_kn
+    value: 4
+    unit: kn
+    range: [3, 5]
+    why: Below ~4 kn the array sinks out of its depth band and the tow cable can foul.
+    source: invented
+  - id: guests.g6.tow_speed_hi_kn
+    value: 6
+    unit: kn
+    range: [5, 8]
+    why: Above ~6 kn flow noise on the hydrophones drowns the signal.
+    source: invented
+  - id: guests.g6.ramp_sea_state_max
+    value: 4
+    unit: sea state
+    range: [3, 5]
+    why: Handling the array over the ramp; matches the sea-state limit Annex B gives G2 and G3 for over-side work.
+    source: invented (by analogy with B.G2 / B.G3)
+  - id: guests.g6.pause_window_min
+    value: 30
+    unit: min
+    range: [15, 45]
+    why: The array can stay streamed, not recording, for this long while the ship manoeuvres; longer and the operator recovers it.
+    source: invented
+  - id: guests.g6.backbone_mbps
+    value: 20
+    unit: Mbit/s
+    range: [10, 50]
+    why: Multi-channel raw hydrophone stream to the recorder and the edge compute.
+    source: invented
+  - id: guests.g6.satcom_mbps
+    value: 0.2
+    unit: Mbit/s
+    range: [0.1, 0.5]
+    why: Detection summaries ashore only; raw audio stays aboard, so the demand is elastic.
+    source: invented
+  - id: guests.g6.cores
+    value: 4
+    unit: cores
+    range: [2, 8]
+    why: Spectrogram and click / whistle detection on CPU; no accelerator needed.
+    source: invented
+  - id: guests.g6.mem_gb
+    value: 16
+    unit: GB
+    range: [8, 32]
+    why: Buffering several minutes of multi-channel audio for detection.
+    source: invented
+  - id: guests.g6.install_people
+    value: 3
+    unit: people
+    range: [2, 4]
+    why: Lift the module into the bay and lead the tow cable to the ramp.
+    source: invented
+  - id: guests.g6.install_hours
+    value: 4
+    unit: h
+    range: [3, 6]
+    why: Module lift, manifold and power hook-up, cable lead and a dry test.
+    source: invented
