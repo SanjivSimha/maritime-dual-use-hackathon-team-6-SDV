@@ -36,6 +36,7 @@ class Command(BaseModel):
     model_config = ConfigDict(extra="forbid")
     op: Literal[
         "admit",
+        "import_card",
         "priority",
         "crew",
         "scenario",
@@ -48,6 +49,7 @@ class Command(BaseModel):
         "replay",
     ]
     card: str | None = None
+    card_json: str | None = None
     value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     priority: str | None = None
     crew: Literal[0, 6, 14] | None = None
@@ -84,6 +86,7 @@ def apply(state: Session, cmd: Command) -> Session:
         return Session(state.id)
     required = {
         "admit": "card",
+        "import_card": "card_json",
         "crew": "crew",
         "priority": "priority",
         "scenario": "scenario",
@@ -104,7 +107,12 @@ def apply(state: Session, cmd: Command) -> Session:
     context = state.simulation.runner.context
     catalogue = {**context.manifests, **context.cards}
     inputs = []
-    if cmd.op == "admit":
+    if cmd.op == "import_card":
+        card = adapter.parse_card(cmd.card_json, catalogue)
+        if card.id in state.snapshot.guests:
+            raise ValueError("Cannot replace an installed guest; use a proposed guest ID")
+        inputs = [("card_presented", {"card": card.model_dump(mode="json")})]
+    elif cmd.op == "admit":
         if cmd.card not in catalogue or cmd.card in state.snapshot.guests:
             raise ValueError("Select a proposed card that is not already aboard")
         if cmd.value is None:

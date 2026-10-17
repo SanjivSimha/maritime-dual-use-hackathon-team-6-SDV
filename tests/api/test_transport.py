@@ -120,6 +120,24 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
             "document.querySelector('#decision').textContent.includes('No current decision')"
         )
         assert page.locator("#value").input_value() == "0.9"
+        page.click("#loadCardJson")
+        judge = json.loads(page.locator("#cardJson").input_value())
+        judge["id"] = "BROWSER_JUDGE"
+        judge["name"] = "<img src=x onerror=alert(1)>"
+        next(m for m in judge["modes"] if m["name"] == "charging")["power_kw"] = 41
+        page.fill("#cardJson", json.dumps(judge))
+        page.click('#importCard button[type="submit"]')
+        page.wait_for_function("state.decision?.subject === 'BROWSER_JUDGE'")
+        assert (
+            page.locator('#card option[value="BROWSER_JUDGE"]')
+            .text_content()
+            .endswith(judge["name"])
+        )
+        assert page.locator("#card img").count() == 0
+        page.click("#replay")
+        page.wait_for_function("state.replay?.byte_identical === true")
+        page.click("#reset")
+        page.wait_for_function("!state.proposed_cards.BROWSER_JUDGE && state.next_t_s === 0")
         # Actual browser commands progress the real simulator and export complete evidence.
         page.select_option("#scenario", "B")
         page.wait_for_function(

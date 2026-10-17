@@ -9,11 +9,37 @@ from shipos.engine import admission, arbitration, shedding
 from shipos.paths import DATA_DIR, REPO_DIR
 from shipos.sim.log import verify_jsonl
 from shipos.sim.runner import Runner, load_scenario, replay_jsonl
+from shipos.validation import guest_errors
 
 FIXTURES = REPO_DIR / "tests" / "fixtures"
 CALLBACK = "shipos.api.admission-events/v1"
 HORIZON_S = 720
 MAX_TICKS = 120
+
+
+def parse_card(text: str, catalogue: dict[str, GuestManifest]) -> GuestManifest:
+    def reject_constant(value):
+        raise ValueError(f"Nonfinite number {value} is not supported")
+
+    def check_refs(value):
+        if isinstance(value, str) and value.startswith("$"):
+            raise ValueError("Supply resolved JSON values; assumption references are not accepted")
+        if isinstance(value, dict):
+            for item in value.values():
+                check_refs(item)
+        elif isinstance(value, list):
+            for item in value:
+                check_refs(item)
+
+    raw = json.loads(text, parse_constant=reject_constant)
+    check_refs(raw)
+    json.dumps(raw, allow_nan=False)  # Also rejects overflow such as 1e999.
+    card = GuestManifest.model_validate(raw)
+    json.dumps(card.model_dump(mode="json"), allow_nan=False)  # Includes coerced numeric strings.
+    errors = guest_errors(card, {**catalogue, card.id: card})
+    if errors:
+        raise ValueError("; ".join(errors))
+    return card
 
 
 def callback(envelope: Envelope):
