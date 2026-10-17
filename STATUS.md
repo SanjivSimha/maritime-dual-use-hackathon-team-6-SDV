@@ -93,3 +93,12 @@ Next recommended action:
   and Uvicorn WebSocket environment stepping/replay. Execution remains unavailable
   until finished #36 code is imported. No applied-action or landing proof claimed.
 - G6/Windows loader reproductions: issue #39, assigned to Sanjiv.
+
+- GitHub auto-deleted #35's source ref despite no delete flag being requested;
+  main restored b/ui-clarity-v1 at its exact reviewed d8bf25d head without force.
+- Post-rebase API checks at f760f70: 397 passed + one optional browser skip;
+  35 API/browser tests passed, five required GitHub checks pass. Real offline HTTP
+  environment selection/step/export execution replay verified; execution enablement
+  correctly returns unavailable while #36 remains contract-only c367e3a.
+  Remaining execution semantics are tracked in Sanjiv issue #40. Runtime merge is
+  blocked on finished #36 and substantive review; no scheduled/applied-action proof.

@@ -51,7 +51,7 @@ Tested interaction sequence:
 3. Reset restores LIVE A, original inputs, seed 0, empty proposed cards/history,
    initial runner log/hash, priority and crew. Selecting a scenario or preview mode
    also starts a fresh runner and replay. Mode-only changes preserve the selected
-   scenario: B Ã¢â€ â€™ SAMPLE Ã¢â€ â€™ LIVE remains B, with a fresh B baseline each time.
+   scenario: B ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ SAMPLE ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ LIVE remains B, with a fresh B baseline each time.
    Explicit Reset still restores A. B's documented YAML seed is 6.
 4. Select B (LIVE simulator), enter battery report 13, inject battery report.
    G4's actual snapshot percentage changes at t=0; its mode remains flying.
@@ -183,3 +183,18 @@ The API never applies crew preparation requests. Executor integration must consu
 only supported, unambiguous producer semantics. D3 protection is now forwarded from
 the public context; the lifetime must come from the executor's reviewed policy.
 Human planning requirements are never treated as received operator confirmation.
+
+
+Verified offline launch from C:/Users/asagb/Projects/shipos-main-integrate:
+
+```powershell
+& "C:\Users\asagb\Projects\shipos-main\.tools\uv.exe" run --locked --offline python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8011 --ws websockets-sansio
+```
+
+http://127.0.0.1:8011/ was exercised through real HTTP environment selection,
+step and execution replay. The captured-environment run replayed byte-identically
+(final hash d7af375109c963dea21a9a8bdfe2a248c282d0a4eae613052b7b96debfe96fde).
+Enabling unfinished execution returned readable 422 rather than a sample or a
+fabricated action. Current API proof is 397 tests passed, one optional browser skip;
+35 API/browser tests passed using local Chrome and the Playwright tooling overlay.
+All five required GitHub checks pass at f760f70; substantive runtime review is pending.
