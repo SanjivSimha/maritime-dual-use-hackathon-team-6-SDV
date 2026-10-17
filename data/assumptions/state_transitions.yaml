@@ -20,3 +20,13 @@ assumptions:
     unit: rule
     why: Every A.6 transition is planned at its slowest value, so a deadline that passes on paper passes at sea.
     source: invented
+  - id: state.transitions_concurrent
+    value: true
+    unit: rule
+    why: A.6 gives one transition time per variable. We let speed, course and noise settle at the same time, so the ship is ready when the slowest one is. Exceptions - an acoustic hold command must arrive (≤ 60 s) before any manoeuvre, and a human confirms the deck only once it is clear.
+    source: invented
+  - id: state.crew_level_lookup
+    value: next level down
+    unit: rule
+    why: A.6 states times for 14, 6 and 0 aboard; a crew of 10 uses the 6-crew times.
+    source: invented
