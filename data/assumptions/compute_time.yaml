@@ -67,3 +67,28 @@ assumptions:
     unit: decimals
     why: Minutes are reported to 0.1 min in decisions.
     source: invented
+  - id: shed.horizon_min
+    value: 30
+    unit: min
+    why: D4 forecasts the guests' scheduled modes 30 min ahead, so an overlap that has not started yet (a 60-min non-interruptible recharge, a 20-min drone charge) is resolved before it trips the last genset.
+    source: invented
+  - id: shed.first_action_s
+    value: 1
+    unit: s
+    why: The first shed command leaves 1 s after the trip is detected (A.8 ceiling 5 s).
+    source: invented
+  - id: shed.step_interval_s
+    value: 2
+    unit: s
+    why: Each later step waits 2 s so the remaining genset settles between steps. Up to 30 steps still fit in the 60 s full-sequence ceiling.
+    source: invented
+  - id: shed.min_relief_kw
+    value: 0.1
+    unit: kW
+    why: Avoids dividing by zero when ranking an armed step that relieves nothing at the current peak.
+    source: invented
+  - id: display.kw_decimals
+    value: 2
+    unit: decimals
+    why: kW figures in decisions are reported to 0.01 kW.
+    source: invented
