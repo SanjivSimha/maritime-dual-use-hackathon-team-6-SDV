@@ -92,3 +92,18 @@ assumptions:
     unit: decimals
     why: kW figures in decisions are reported to 0.01 kW.
     source: invented
+  - id: shed.max_defer_entries
+    value: 2
+    unit: schedule entries per guest
+    why: Solver budget on the 5 s path. Only a guest's next two deferrable transitions inside the horizon are candidates for deferral.
+    source: invented
+  - id: shed.max_defer_delays
+    value: 4
+    unit: delays per entry
+    why: Solver budget. A deferral is tried up to the next four other-guest transitions (the instants where the overlap can end).
+    source: invented
+  - id: shed.max_combinations
+    value: 20000
+    unit: combinations
+    why: Count-based cap that keeps D4 deterministic and under the 5 s first-action ceiling. Above it the planner falls back to adding one move per guest in the declared ladder order.
+    source: invented

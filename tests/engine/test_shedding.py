@@ -156,3 +156,41 @@ def test_armed_ladder_follows_the_priority_file(ship, guests, survey, sar):
         for p in (survey, sar)
     }
     assert order["survey_primary"][0] == "G5" and order["sar_primary"][-1] == "G5"
+
+
+def _overdrawn(snap, gid, kw, mode=None):
+    rt = snap.guests[gid].model_copy(update={"measured_kw": kw, **({"mode": mode} if mode else {})})
+    return snap.model_copy(update={"guests": {**snap.guests, gid: rt}})
+
+
+def test_overdraw_never_touches_the_protected_winner(ship, guests, survey):
+    snap = _overdrawn(survey_path(), "G4", 2 * 1.5)
+    d = shedding.overdraw(
+        ship, guests, snap, survey, persisted_s={"G4": 120}, protected=frozenset({"G4"})
+    )
+    assert d.verdict == Verdict.NO_ACTION
+
+
+def test_overdraw_never_interrupts_a_non_interruptible_mode(ship, guests, survey):
+    snap = _overdrawn(survey_path(), "G3", 25 * 1.3, mode="charging")
+    d = shedding.overdraw(ship, guests, snap, survey, persisted_s={"G3": 120})
+    assert d.verdict == Verdict.NO_ACTION
+
+
+def test_search_is_bounded_with_long_schedules(ship, guests, sar):
+    long = [
+        ScheduledMode(t_s=12 * MIN + 30 * i, mode="charging" if i % 2 else "recovering")
+        for i in range(1, 400)
+    ]
+    snap = sar_path()
+    g3 = snap.guests["G3"].model_copy(update={"schedule": long})
+    g4_long = [
+        ScheduledMode(t_s=12 * MIN + 45 * i, mode="charging" if i % 2 else "topping")
+        for i in range(1, 200)
+    ]
+    g4 = snap.guests["G4"].model_copy(update={"schedule": g4_long})
+    snap = snap.model_copy(update={"guests": {**snap.guests, "G3": g3, "G4": g4}})
+    t0 = time.perf_counter()
+    d = shedding.plan(ship, guests, snap, sar, protected=frozenset({"G4"}))
+    assert time.perf_counter() - t0 < ship.timing.shed_first_s
+    assert d.verdict in (Verdict.SHED, Verdict.NO_ACTION)

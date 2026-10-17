@@ -16,6 +16,7 @@ ladder — the order the governor would shed in if the margin closes.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from itertools import product
 
@@ -181,26 +182,35 @@ def _moves_for(gid, g, snap, prio, horizon_s, protected) -> list[_Move | None]:
                 factor=m.capability_factor,
             )
         )
+    end = snap.t_s + horizon_s
     others = sorted(
-        {e.t_s for o, ort in snap.guests.items() if o != gid for e in ort.schedule}
-        | {snap.t_s + horizon_s}
+        {
+            e.t_s
+            for o, ort in snap.guests.items()
+            if o != gid
+            for e in ort.schedule
+            if snap.t_s < e.t_s < end
+        }
+        | {end}
     )
-    for i, e in enumerate(rt.schedule):
-        if e.t_s <= snap.t_s or not g.mode(e.mode).deferrable:
-            continue
-        for tau in others:
-            if tau > e.t_s:
-                delay = tau - e.t_s
-                out.append(
-                    _Move(
-                        gid,
-                        ActionKind.DEFER,
-                        e.mode,
-                        defer_index=i,
-                        delay_s=delay,
-                        cost=w * delay / A("time.s_per_min"),
-                    )
+    entries = [
+        (i, e)
+        for i, e in enumerate(rt.schedule)
+        if snap.t_s < e.t_s < end and g.mode(e.mode).deferrable
+    ][: A("shed.max_defer_entries")]
+    for i, e in entries:
+        delays = [tau - e.t_s for tau in others if tau > e.t_s][: A("shed.max_defer_delays")]
+        for delay in delays:
+            out.append(
+                _Move(
+                    gid,
+                    ActionKind.DEFER,
+                    e.mode,
+                    defer_index=i,
+                    delay_s=delay,
+                    cost=w * delay / A("time.s_per_min"),
                 )
+            )
     return out
 
 
@@ -276,7 +286,10 @@ def plan(
         return d.model_copy(update={"rationale": render(d)})
 
     best = None
-    for combo in product(*per_guest):
+    combos = math.prod(len(o) for o in per_guest)
+    if combos > A("shed.max_combinations"):
+        best = _greedy(guests, snap, per_guest, priorities, before, usable, loop, corner, end)
+    for combo in product(*per_guest) if combos <= A("shed.max_combinations") else ():
         moves = tuple(m for m in combo if m is not None)
         if best is not None and _key(moves, guests, priorities) >= best[0]:
             continue
@@ -325,6 +338,24 @@ def plan(
         t_s=snap.t_s,
     )
     return d.model_copy(update={"rationale": render(d)})
+
+
+def _greedy(guests, snap, per_guest, prio, before, usable, loop, corner, end):
+    """Bounded fallback: add one move per guest in the declared ladder order until it holds."""
+    singles = sorted(
+        (m for opts in per_guest for m in opts if m is not None),
+        key=lambda m: (prio.mission_critical(guests[m.guest]), TIER[m.kind], m.cost, m.guest),
+    )
+    chosen: dict[str, _Move] = {}
+    for m in singles:
+        if m.guest in chosen:
+            continue
+        chosen[m.guest] = m
+        after = _peaks(guests, snap, chosen, end)
+        if all(r.ok for r in _results(snap, after, usable, loop, corner)):
+            moves = tuple(chosen.values())
+            return (_key(moves, guests, prio), moves, after)
+    return None
 
 
 def _relief(guests, snap, m: _Move, before) -> float:
@@ -378,6 +409,7 @@ def overdraw(
     snapshot: WorldSnapshot,
     priorities: PriorityFile,
     persisted_s: dict[str, float],
+    protected: frozenset[str] = frozenset(),
 ) -> Decision:
     """A guest drawing more than declared: warn, then throttle, then shed if it persists."""
     snap = snapshot
@@ -411,11 +443,11 @@ def overdraw(
     )
     held = persisted_s.get(gid, 0)
     act = None
-    if (
-        ratio >= A("overdraw.throttle_ratio")
-        and held >= A("overdraw.warn_after_s")
-        and not g.safety_critical
-    ):
+    rt = snap.guests[gid]
+    allowed = (
+        not g.safety_critical and gid not in protected and g.mode(rt.mode).interruptible
+    )  # same guards as plan(): never the winner, never a non-interruptible mode
+    if ratio >= A("overdraw.throttle_ratio") and held >= A("overdraw.warn_after_s") and allowed:
         tier = ModeTier.OFF if held >= A("overdraw.shed_after_s") else ModeTier.LOW_POWER
         target = [m for m in g.modes if m.tier == tier] or [
             m for m in g.modes if m.tier == ModeTier.STANDBY
