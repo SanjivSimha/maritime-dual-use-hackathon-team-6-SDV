@@ -51,7 +51,7 @@ Tested interaction sequence:
 3. Reset restores LIVE A, original inputs, seed 0, empty proposed cards/history,
    initial runner log/hash, priority and crew. Selecting a scenario or preview mode
    also starts a fresh runner and replay. Mode-only changes preserve the selected
-   scenario: B → SAMPLE → LIVE remains B, with a fresh B baseline each time.
+   scenario: B â†’ SAMPLE â†’ LIVE remains B, with a fresh B baseline each time.
    Explicit Reset still restores A. B's documented YAML seed is 6.
 4. Select B (LIVE simulator), enter battery report 13, inject battery report.
    G4's actual snapshot percentage changes at t=0; its mode remains flying.
@@ -59,8 +59,9 @@ Tested interaction sequence:
    one simulated second. Every injected event targets public runner.next_t_s.
 5. Click Step (t=1), fast-forward 3 ticks (t=4), then inject genset trip (t=5).
    Platform status becomes one generator. Real D4 answers no_action (49.5 kW fits). HTTP and WebSocket
-   receive the same updated snapshots. No action-applier or crew policy runs, and
-   the session Runner does not use the cached environment (`EnvironmentInput` is an
+   receive the same updated snapshots. Observation mode does not apply actions.
+   The baseline uses scenario weather; an explicit environment command captures the cache.
+   (`EnvironmentInput` is an
    explicit opt-in for direct Runner use only).
 6. Click Verify by replaying: integrity is checked and the complete run is
    re-executed with the same callback and captured admission envelope. Every actual
@@ -90,7 +91,7 @@ the API command without committing its snapshot, context, RNG, history or log.
 Direct D3/D4 buttons ("Ask the engine") are read-only queries outside canonical simulation
 records; D3 needs G4 aboard, so in Scenario A it is refused with that reason;
 only an explicitly selected SAMPLE mode previews fixtures. Preview results are
-never added to runner.jsonl. The runner records Decisions but never applies actions.
+never added to runner.jsonl. Observation mode records Decisions without applying actions. Opt-in execution is gated on the public executor.
 
 Replay portability limits: the bundle preserves the admission envelope in addition
 to the runner header's ship, manifests, priorities, timeline, seed and profiles.
@@ -158,3 +159,18 @@ Existing snapshot responses gain:
 Observation remains the default. Execution opt-in is unavailable until the real
 public Runner seam is imported. Admission never installs proposed cards. Longer
 execution runs will be enabled only to the executor's published/tested horizon.
+
+
+Current runtime adapter verification: cached environment uses only the allowlisted
+strait_of_sicily cache and validates initial coverage before starting a fresh run.
+Daylight eligibility uses an explicit fixed UTC offset in minutes; no IANA-zone or
+DST behavior is implied. Provenance describes cached model forecasts, not live sensors.
+All fresh resets retain the old evidence at the returned previous_runs indices;
+unknown archived indices return 404. Snapshot weather changes on the first Runner
+tick, never by modifying physical inputs in browser rendering.
+
+Substantive review gate: #35 is ready, but the automated review action skipped its
+review because the API key was absent. A green job alone is not merge approval.
+Current executor dependency #36 is still contract-only; enabling execution returns
+an explicit unavailable error until finished code is imported and verified. There
+is no substitute action-applier in this API. Track A/shared blockers are issue #39.

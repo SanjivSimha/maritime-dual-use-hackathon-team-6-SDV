@@ -148,6 +148,8 @@ class Simulation:
                 layered_water=self.environment_config.layered_water,
                 allow_stale=self.environment_config.allow_stale,
             )
+        if self.environment_input is not None:
+            self.environment_input.env_at(0)  # Reject unusable initial cache coverage before reset.
         if execution and not hasattr(Runner, "execution_status"):
             raise ValueError(
                 "Execution unavailable: school's public execution seam is not imported"
@@ -267,7 +269,7 @@ class Simulation:
 
     def advance(self, ticks=1, inputs=()):
         if not 1 <= ticks <= MAX_TICKS:
-            raise ValueError(f"Use 1Ã¢â‚¬â€œ{MAX_TICKS} ticks per command")
+            raise ValueError(f"Use 1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“{MAX_TICKS} ticks per command")
         if self.runner.next_t_s + ticks - 1 > HORIZON_S:
             raise ValueError(
                 "Demo horizon ends at 720 s; operational prerequisites are unavailable"
