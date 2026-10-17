@@ -6,7 +6,7 @@ from shipos.contracts import Event
 from shipos.data import load_guests, load_priorities, load_ship
 from shipos.paths import DATA_DIR
 from shipos.sim.consumption import Profile
-from shipos.sim.log import verify_jsonl
+from shipos.sim.log import canonical, verify_jsonl
 from shipos.sim.runner import Runner, load_scenario, replay_jsonl
 
 
@@ -235,9 +235,59 @@ def test_changed_injected_input_changes_replay_evidence(make_runner):
     assert sims[0].snapshot.guests["G4"].battery_pct != sims[1].snapshot.guests["G4"].battery_pct
 
 
-def test_no_injection_preserves_documented_hash_and_omits_extension():
-    sim = load_scenario(DATA_DIR / "scenarios/B.yaml")
+def test_no_injection_preserves_documented_hash_and_omits_extension(historical_scenario_b):
+    sim = historical_scenario_b()
     sim.run(721)
     assert sim.final_hash == "ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28"
     assert b'"injected_events"' not in sim.jsonl
     assert replay_jsonl(sim.jsonl).jsonl == sim.jsonl
+
+
+def test_current_catalog_repeats_replays_and_does_not_install_unused_cards(
+    historical_scenario_b, monkeypatch
+):
+    historical = historical_scenario_b()
+    # Default and explicitly disabled extensions must use identical complete inputs.
+    runs = [
+        load_scenario(DATA_DIR / "scenarios/B.yaml"),
+        load_scenario(DATA_DIR / "scenarios/B.yaml", environment=None, execution=False),
+    ]
+    old_header = json.loads(historical.jsonl)["record"]
+    new_header = json.loads(runs[0].jsonl)["record"]
+    assert set(old_header["manifests"]) == {"G1", "G2", "G3", "G4", "G5"}
+    assert set(new_header["manifests"]) == set(load_guests())
+    assert "G6" in new_header["manifests"]
+    assert {k: new_header["manifests"][k] for k in old_header["manifests"]} == old_header[
+        "manifests"
+    ]
+    assert {**old_header, "manifests": new_header["manifests"]} == new_header
+    installed = set(old_header["initial"]["guests"])
+    assert installed == {"G1", "G3", "G4", "G5"}
+    assert "G6" not in installed
+    observations = []
+    for sim in [historical, *runs]:
+        assert set(sim.snapshot.guests) == installed
+        sim.run(721)
+        ticks = [json.loads(line)["record"] for line in sim.jsonl.splitlines()[1:]]
+        observations.append(ticks)
+        assert all(set(tick["snapshot"]["guests"]) == installed for tick in ticks)
+        assert not sim.execution_status["enabled"] and sim.environment is None
+    assert runs[0].jsonl == runs[1].jsonl
+    assert runs[0].final_hash == runs[1].final_hash
+    assert runs[0].final_hash != historical.final_hash
+    # Only the captured catalog changed: all committed observation records are identical.
+    assert observations[0] == observations[1] == observations[2]
+
+    def no_catalogue(*args, **kwargs):
+        raise AssertionError("Historical and current replay must use embedded manifests")
+
+    monkeypatch.setattr("shipos.sim.runner.load_guests", no_catalogue)
+    for sim in [historical, *runs]:
+        assert verify_jsonl(sim.jsonl, expected_hash=sim.final_hash) == sim.final_hash
+        replay = replay_jsonl(sim.jsonl)
+        assert replay.jsonl == sim.jsonl and replay.final_hash == sim.final_hash
+    tampered = [json.loads(line) for line in runs[0].jsonl.splitlines()]
+    tampered[0]["record"]["manifests"]["G6"]["name"] += " changed"
+    data = b"".join(canonical(line) + b"\n" for line in tampered)
+    with pytest.raises(ValueError, match="integrity failure"):
+        verify_jsonl(data)
