@@ -314,8 +314,8 @@ def test_changed_captured_input_changes_replay_evidence(synthetic):
     assert replay_jsonl(second.jsonl).jsonl == second.jsonl
 
 
-def test_no_environment_scenario_retains_baseline_bytes_and_hash():
-    sim = load_scenario(SCENARIO)
+def test_no_environment_scenario_retains_baseline_bytes_and_hash(historical_scenario_b):
+    sim = historical_scenario_b()
     sim.run(721)
     assert sim.environment is None
     assert sim.final_hash == "ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28"
