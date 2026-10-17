@@ -265,7 +265,7 @@ def test_rejected_runtime_command_leaves_controls_as_the_server_reports(page):
 def test_runtime_controls_are_keyboard_reachable(page):
     controlled(page, [])
     open_mission(page)
-    page.focus('[data-op="shedding"]')
+    page.focus('[data-event="genset_trip"]')
     page.keyboard.press("Tab")
     assert page.evaluate("document.activeElement.id") == "execution"
     assert not page.evaluate("document.documentElement.scrollWidth > window.innerWidth")

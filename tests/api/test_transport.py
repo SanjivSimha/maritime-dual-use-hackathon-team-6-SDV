@@ -157,11 +157,7 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         page.fill("#cardJson", json.dumps(judge))
         page.click('#importCard button[type="submit"]')
         page.wait_for_function("state.decision?.subject === 'BROWSER_JUDGE'")
-        assert (
-            page.locator('#card option[value="BROWSER_JUDGE"]')
-            .text_content()
-            .endswith(judge["name"])
-        )
+        assert judge["name"] in page.locator('#card option[value="BROWSER_JUDGE"]').text_content()
         assert page.locator("#card img").count() == 0
         page.click("#replay")
         page.wait_for_function("state.replay?.byte_identical === true")
@@ -182,6 +178,7 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         decision = page.locator("#decision").inner_text()
         assert "Right of way (D3)" in decision and "computed (LIVE)" in decision
         assert "Goes first" in decision and "SAMPLE" not in decision
+        page.click("#mission details:has([data-op]) summary")
         page.click('[data-op="shedding"]')
         page.wait_for_function("state.decision?.kind === 'shedding'")
         assert "Degradation plan (D4)" in page.locator("#decision").inner_text()
@@ -227,7 +224,7 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
                 injected: document.querySelectorAll('#decision script, #decision img').length
             };
         }""")
-        assert rendered["label"].endswith("<img src=x onerror=alert(1)>")
+        assert "<img src=x onerror=alert(1)>" in rendered["label"]
         assert "<script>alert(1)</script>" in rendered["decision"]
         assert rendered["injected"] == 0
         assert page.locator(".gauge").count() == 8
