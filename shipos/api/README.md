@@ -124,3 +124,37 @@ skip if Playwright/local Windows Chrome is absent. To run them without adding an
 project dependency: `.\.tools\uv.exe run --offline --with playwright pytest tests/api -rs`.
 The browser test blocks external requests and uses installed Chrome; no browser is
 downloaded. Only Playwright test tooling uses an overlay, never the WebSocket backend.
+
+
+## Runtime API v2 integration contract (implementation in progress)
+
+Commands use the existing POST /api/sessions/{id}/commands and WebSocket /ws/{id}.
+Claude can build controls against these exact payloads:
+
+```json
+{"op":"execution","enabled":true,"fresh_run":true}
+{"op":"execution","enabled":false,"fresh_run":true}
+{"op":"confirm_deck","by":"deck officer"}
+{"op":"environment","fresh_run":true,"environment":{"source":"strait_of_sicily","scenario_start":"2026-10-17T08:00:00+02:00","layered_water":false,"timezone_offset_min":120,"allow_stale":false}}
+{"op":"environment","fresh_run":true,"environment":{"source":"scenario"}}
+```
+
+Execution/environment commands require explicit fresh_run=true. They retain the
+selected scenario, priority and crew, reset the Runner reproducibly, and archive
+prior evidence. `confirm_deck` is stamped at runner.next_t_s (simulation time),
+not wall time, and becomes an operator_confirmation event. It is not a command
+to clear the deck. Crew/executor validation may reject it.
+
+Existing snapshot responses gain:
+- execution: {enabled: boolean, status: <school's defensive JSON execution_status>}
+- crew_policy: {permitted, confirm, confirmation, blockers, requests}; a planner's
+  confirm=human requirement is distinct from confirmation=received.
+- environment: {configuration, provenance, windows, eligibility_only: true}; windows
+  are eligibility only, never permission to install/recover. Source is a fixed
+  catalog key; no arbitrary paths, runtime downloads or network fallback.
+- previous_runs: [{run: integer, final_hash: string}]; GET /api/sessions/{id}/evidence?run=N
+  exports archived evidence. Existing export without run selects the current run.
+
+Observation remains the default. Execution opt-in is unavailable until the real
+public Runner seam is imported. Admission never installs proposed cards. Longer
+execution runs will be enabled only to the executor's published/tested horizon.
