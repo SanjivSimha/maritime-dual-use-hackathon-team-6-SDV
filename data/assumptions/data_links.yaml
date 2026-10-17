@@ -1,0 +1,12 @@
+class: Data links
+assumptions:
+  - id: data.ship_satcom_reserved_mbps
+    value: 0.5
+    unit: Mbit/s
+    why: The ship's own traffic (weather, ops, crew) on the shared SATCOM; guests share what is left.
+    source: invented
+  - id: data.satcom_admission_basis
+    value: worst case (2 Mbit/s × 70 % availability)
+    unit: rule
+    why: Admission is judged on the envelope; SATCOM is elastic, so a shortfall is reported as capability lost, not a refusal.
+    source: invented

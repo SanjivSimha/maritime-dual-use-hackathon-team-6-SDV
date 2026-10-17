@@ -1,0 +1,22 @@
+class: Mass / stability
+assumptions:
+  - id: mass.margin_kept_t
+    value: 0
+    unit: t
+    why: We use the full 10 t margin and the 12 t-eq stability budget from A.4, with no extra safety factor; admission reports the remaining margin.
+    source: A.4
+  - id: guests.g2.body_mass_t
+    value: 3.0
+    unit: t
+    why: B.G2 gives 3.5 t including the winch and probe parts; we split it 3.0 / 0.4 / 0.1.
+    source: invented split of B.G2
+  - id: guests.g2.winch_mass_t
+    value: 0.4
+    unit: t
+    why: See guests.g2.body_mass_t.
+    source: invented split of B.G2
+  - id: guests.g2.probe_mass_t
+    value: 0.1
+    unit: t
+    why: See guests.g2.body_mass_t.
+    source: invented split of B.G2

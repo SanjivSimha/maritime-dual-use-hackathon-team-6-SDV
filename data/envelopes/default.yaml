@@ -1,0 +1,10 @@
+# A.10 default mission envelope (the jury may narrow or widen it).
+id: default
+speed_bands: [slow, cruise]        # use the lower reserve
+seawater_c_max: 30                 # judge cooling at 30 °C
+gensets_online: [2, 1]             # one-genset-down assumed possible
+include_cooling_degraded: false    # not in A.10; reported as a contingency instead
+sea_state_max: 5
+wind_max_kn: 30
+days_without_port: 14
+silence_expected: false

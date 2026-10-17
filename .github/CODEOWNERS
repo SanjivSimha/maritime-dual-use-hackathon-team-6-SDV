@@ -1,11 +1,16 @@
-# Person A: physics + decision engine. Person B: data, sim, UI, crew, docs.
-# TODO: replace @TEAMMATE with your teammate's GitHub handle once they have repo access.
-*                         @SanjivSimha
+# Person A (@SanjivSimha): physics + decision engine. Person B (@asagberman): data, sim, UI, crew, docs.
+*                         @SanjivSimha @asagberman
 
 /shipos/physics/          @SanjivSimha
 /shipos/engine/           @SanjivSimha
 /shipos/statemachine.py   @SanjivSimha
 
+/data/                    @asagberman
+/shipos/sim/              @asagberman
+/shipos/api/              @asagberman
+/shipos/crew/             @asagberman
+/docs/                    @asagberman
+
 # Shared contracts and CI need both people.
-/shipos/contracts.py      @SanjivSimha
-/.github/                 @SanjivSimha
+/shipos/contracts.py      @SanjivSimha @asagberman
+/.github/                 @SanjivSimha @asagberman

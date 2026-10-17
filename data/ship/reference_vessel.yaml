@@ -1,0 +1,102 @@
+# Reference platform — Technical Annex A. Literal numbers are Annex values (section noted);
+# "$<id>" values are our assumptions, each justified in data/assumptions/.
+name: Reference multi-role vessel (60-70 m, fictional)
+crew_levels: [14, 6, 0]                       # A.6 / glossary
+
+power:                                         # A.1, A.9
+  reserve_kw:
+    stopped: {2: "$power.reserve.stopped.two_gensets", 1: "$power.reserve.stopped.one_genset"}
+    slow:    {2: "$power.reserve.slow.two_gensets",    1: "$power.reserve.slow.one_genset"}
+    cruise:  {2: 200, 1: 100}                  # A.1 nominal / one genset down
+    fast:    {2: "$power.reserve.fast.two_gensets",    1: "$power.reserve.fast.one_genset"}
+  peak_extra_kw: {2: 250, 1: 100}              # A.1 / A.9
+  peak_window_s: 60
+  lines: {port: 150, stbd: 150}                # A.1 two mission lines
+  line_lost_on_trip: "$power.line_lost_on_trip"
+  degraded_spinning_reserve_kw: "$power.degraded_spinning_reserve_kw"
+
+cooling:                                       # A.2
+  t_lo_c: 12
+  cap_lo_kw: 160
+  t_hi_c: 30
+  cap_hi_kw: 120
+  degraded_factor: 0.6                         # -40 %
+  inertia_kw: 30
+  inertia_s: 60
+  inertia_period_s: 600
+  mast_air_max_kw: 2
+
+slots:                                         # A.3
+  - {id: bay1,  kind: bay1_whole, group: bay1, units: 2, max_mass_t: 8, max_area_m2: 14.64,
+     stability_multiplier: 1.0, cooling_manifold: true}
+  - {id: bay1a, kind: bay1_half,  group: bay1, units: 1, max_mass_t: "$positions.bay1_half_max_mass_t",
+     max_area_m2: 7.32, stability_multiplier: 1.0, cooling_manifold: true}
+  - {id: bay1b, kind: bay1_half,  group: bay1, units: 1, max_mass_t: "$positions.bay1_half_max_mass_t",
+     max_area_m2: 7.32, stability_multiplier: 1.0, cooling_manifold: true}
+  - {id: bay2,  kind: bay2, group: bay2, units: 1, max_mass_t: 4, max_area_m2: 7.2,
+     stability_multiplier: 1.0, cooling_manifold: true}
+  - {id: hangar, kind: hangar, group: hangar, units: 1, max_mass_t: "$positions.hangar_max_mass_t",
+     stability_multiplier: 1.2, cooling_manifold: true}
+  - {id: hangar_roof, kind: hangar_roof, group: hangar_roof, units: 1,
+     max_mass_t: "$positions.hangar_roof_max_mass_t", max_area_m2: "$positions.hangar_roof_max_area_m2",
+     stability_multiplier: 1.2, cooling_manifold: false}
+  - {id: mast1, kind: mast, group: mast1, units: 1, max_mass_t: 0.06, max_area_m2: 0.6,
+     stability_multiplier: 3.0, cooling_manifold: false, occupied_by: navigation radar}
+  - {id: mast2, kind: mast, group: mast2, units: 1, max_mass_t: 0.06, max_area_m2: 0.6,
+     stability_multiplier: 3.0, cooling_manifold: false, occupied_by: satellite terminal}
+  - {id: mast3, kind: mast, group: mast3, units: 1, max_mass_t: 0.06, max_area_m2: 0.6,
+     stability_multiplier: 3.0, cooling_manifold: false, near_radar: "$positions.mast3_near_radar"}
+
+mass:                                          # A.4
+  margin_t: 10
+  stability_budget_t: 12
+
+links:                                         # A.5
+  backbone_mbps: 20000                         # dual 10 Gbit/s
+  satcom_mbps: {lo: 2, hi: 8}
+  satcom_availability: {lo: 0.70, hi: 0.95}
+  satcom_latency_ms: {lo: 600, hi: 800}
+  radio_mbps: {lo: 1, hi: 20}
+  radio_range_km: {lo: 20, hi: 40}
+  acoustic_kbps: {lo: 1, hi: 5}
+  acoustic_latency_s: {lo: 10, hi: 60}
+  ship_satcom_reserved_mbps: "$data.ship_satcom_reserved_mbps"
+
+compute:                                       # A.7
+  nodes: 4
+  cores_per_node: 32
+  mem_gb_per_node: 128
+  accelerators_per_node: 1
+  storage_tb: 20
+  allocatable_fraction: 0.8
+
+timing:                                        # A.8
+  admission_s: 30
+  arbitration_s: 2
+  shed_first_s: 5
+  shed_full_s: 60
+  safety_command_s: 0.2
+
+transitions:                                   # A.6 (seconds)
+  course_settle_s: {lo: 60, hi: 180}
+  speed_band_s: {lo: 120, hi: 300}
+  to_quiet_s: {lo: 120, hi: 240}
+  deck_clear_s: {14: {lo: 180, hi: 300}, 6: {lo: 480, hi: 720}, 0: null}
+  confirm_s: {14: {lo: 15, hi: 60}, 6: {lo: 60, hi: 180}, 0: null}
+  genset_restart_s: {lo: 300, hi: 900}
+
+install_window:                                # A.11
+  sea_state_max: 3
+  wind_max_kn: 20
+  speed_kn: {lo: 4, hi: 8}
+  people_flight_deck: 3
+  people_ramp: 4
+  drone_swap_min: 30
+  vehicle_swap_min: 45
+  portable_max_kg: 250
+
+speed_bands_kn:                                # A.6; gaps between bands split at midpoints
+  stopped: {lo: 0, hi: "$state.band_edge.stopped_slow_kn"}
+  slow:    {lo: "$state.band_edge.stopped_slow_kn", hi: "$state.band_edge.slow_cruise_kn"}
+  cruise:  {lo: "$state.band_edge.slow_cruise_kn", hi: "$state.band_edge.cruise_fast_kn"}
+  fast:    {lo: "$state.band_edge.cruise_fast_kn"}

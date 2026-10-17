@@ -1,0 +1,47 @@
+class: Anything else
+assumptions:
+  - id: guests.g2.standby_kw
+    value: 1.0
+    unit: kW
+    why: The card gives no standby draw; logger and buffers stay alive.
+    source: invented
+  - id: guests.g3.survey_speed_lo_kn
+    value: 2.5
+    unit: kn
+    why: Card says surveying at 3 kn; we allow ±0.5 kn.
+    source: invented
+  - id: guests.g3.survey_speed_hi_kn
+    value: 3.5
+    unit: kn
+    why: See guests.g3.survey_speed_lo_kn.
+    source: invented
+  - id: guests.g3.recovery_min
+    value: 15
+    unit: min
+    why: Recovering the vehicle up the ramp; the card only gives 45 min for a full swap.
+    source: invented
+  - id: guests.g3.suspend_window_min
+    value: 75
+    unit: min
+    why: A suspended leg can only restart after recovery (15 min) and the non-interruptible 60-min recharge.
+    source: derived from B.G3 + guests.g3.recovery_min
+  - id: guests.g4.topping_min
+    value: 30
+    unit: min
+    why: The card says 35 kW for 20 min "then 10 kW"; we end the 10 kW phase after 30 min.
+    source: invented
+  - id: guests.g4.landing_approach_min
+    value: 3
+    unit: min
+    why: Final approach and touchdown once the ship is in the flight-deck state.
+    source: invented
+  - id: guests.g4.launch_min
+    value: 3
+    unit: min
+    why: Same as the approach.
+    source: invented
+  - id: guests.g5.antenna_height_m
+    value: 0.4
+    unit: m
+    why: A 0.3 m² comms antenna; used for the hangar-roof drone-clearance check.
+    source: invented

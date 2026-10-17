@@ -1,0 +1,12 @@
+class: Heat rejection
+assumptions:
+  - id: heat.kw_per_kw_electric
+    value: 1.0
+    unit: kW heat / kW electric
+    why: Annex A.2 states 1:1. Listed so the Physical Account shows it is used, not because we changed it.
+    source: A.2
+  - id: heat.capacity_interpolation
+    value: linear
+    unit: model
+    why: A.2 gives 160 kW at 12 °C and 120 kW at 30 °C, "falling linearly". We clamp outside 12-30 °C to the end values (no extrapolation).
+    source: A.2 + clamp invented

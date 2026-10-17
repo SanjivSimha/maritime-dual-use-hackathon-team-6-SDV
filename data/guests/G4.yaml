@@ -1,0 +1,46 @@
+# Annex B — G4 VTOL rescue drone + hangar.
+id: G4
+name: VTOL rescue drone + hangar
+mass_t: 0.9                        # hangar module
+cooling: water                     # hangar manifold (A.2)
+preferred: [hangar]
+allowed: [hangar]
+parts:
+  - {id: drone, name: VTOL drone, mass_t: 0.14}
+modes:
+  - {name: standby, power_kw: 2}   # drone aboard, ready
+  - {name: flying, power_kw: 2}
+  - name: recovery
+    power_kw: 2
+    conditions: &flight_ops
+      speed_kn: {lo: 5, hi: 12}
+      deck: clear
+      wind_max_kn: 25
+      sea_state_max: 4
+      uses_flight_deck: true
+      needs_manoeuvre_freedom: true
+  - name: launching
+    power_kw: 2
+    duration_min: "$guests.g4.launch_min"
+    next_mode: flying
+    conditions: *flight_ops
+  - {name: charging, power_kw: 35, duration_min: 20, next_mode: topping}
+  - {name: topping, power_kw: 10, duration_min: "$guests.g4.topping_min", next_mode: standby}
+  - {name: "off", tier: "off", power_kw: 0, capability_factor: 0}
+initial_mode: standby
+activities:
+  - {name: recovery, mode: recovery, duration_min: "$guests.g4.landing_approach_min", followed_by: launch}
+  - {name: launch, mode: launching, duration_min: "$guests.g4.launch_min"}
+battery: {endurance_min: 90, critical_pct: 20, land_within_min: 12}
+excludes:
+  - {kind: conditional, mode: flying, target: "emission:silent", reason: "in silence the drone returns home"}
+data:
+  - {link: radio, mbps: 5}         # 5-20 Mbit/s video, zero in silence
+compute: {cores: "$compute.g4.cores", mem_gb: "$compute.g4.mem_gb", accelerators: "$compute.g4.accelerators"}
+capability:
+  name: search and rescue
+  value_by_mission: {rescue: high, patrol: medium, survey: low}
+  default: low
+  tags: [sar, aerial]
+installation: {where: port_only, people: 4, hours: 4}
+at_sea_swap: {what: drone, via: flight_deck, people: 3, minutes: 30}
