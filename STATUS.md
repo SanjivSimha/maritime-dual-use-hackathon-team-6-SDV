@@ -59,3 +59,26 @@ Tests run and exact results:
 Known problems or missing dependencies:
 Next recommended action:
 ```
+
+
+## Integration captain checkpoint ? 2026-10-17
+
+- Owner: main, sole merger/checkpoint writer for this phase.
+- Merged implementation: origin/main 6ace4b6 (real D3/D4); #35 at d8bf25d is
+  ready for review but NOT merged. Main is an unchanged ancestor of that head.
+- Baseline proof at #35: locked sync and all repository static/guard checks pass;
+  389 tests pass, one optional Playwright skip. Installed-Chrome API/browser suite:
+  27 pass with external requests blocked. This proves observation/admission/replay,
+  not execution of recommendations.
+- Automated review job is green but skipped substantive review because
+  ANTHROPIC_API_KEY is absent. Droid's substantive review/findings still gate merge.
+- Runtime work: draft #37 publishes exact execution/confirmation/environment commands.
+  School's #36 execution seam is still in progress; Claude's #38 controls are separate.
+  No opt-in action execution proof or runtime merge is claimed.
+- Consolidation: #16?#28 and #30 heads are ancestors of #35, excluding #29. #29's
+  judge-card work was reconciled in #30 (78d6eb4) rather than wholesale merged;
+  its cards.py/test_judge_cards.py files are not adopted. #31 has three still-unique
+  release-evidence documents (fc00d86); keep it open for current-evidence refresh.
+  All older source PRs remain open and branches preserved.
+- G6 exact-five tests and Windows default-encoding YAML corruption remain outstanding
+  ownership/shared-loader issues, reported to Sanjiv. No Track A or loader fixes here.
