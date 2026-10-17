@@ -5,8 +5,10 @@ profiles=None, decide=None)` accepts existing frozen contract objects. Import it
 from `shipos.sim.runner`. `load_scenario(Path('data/scenarios/B.yaml'))` loads
 the example through the existing data loaders. No shared contracts change.
 
-* `step() -> WorldSnapshot`: first call emits `initial.t_s`; subsequent calls
-  advance one simulated second. `run(ticks) -> WorldSnapshot` steps without sleep.
+* `next_t_s -> int` is read-only: the next tick time, initially `initial.t_s`.
+* `step(events: Iterable[Event] = ()) -> WorldSnapshot`: first call emits
+  `initial.t_s`; subsequent calls advance one simulated second. `step()` still
+  works without injection. `run(ticks) -> WorldSnapshot` steps without sleep.
   Thus `run(721)` from zero includes the minute-12 event at second 720.
 * `snapshot` and `context` return deep copies. Every returned snapshot owns its
   nested containers. Inputs, callback arguments, and previous snapshots remain
@@ -19,8 +21,9 @@ the example through the existing data loaders. No shared contracts change.
 ## Tick and mode semantics
 
 Times must be nonnegative whole seconds. Timeline entries sort by time, stably;
-equal times retain input/file order. Each tick applies all its events in order,
-then scheduled modes, then elapsed manifest durations, then measurements, then
+equal times retain input/file order. Each tick applies constructor-timeline events
+first, then injected events in caller order, then scheduled modes, then elapsed
+manifest durations, then measurements, then
 the callback. A schedule at an automatic mode boundary wins. Same-time schedules
 retain their list order, including repeated entries for one guest; the last wins.
 Schedules consumed in that tick are removed from the new snapshot only.
@@ -67,10 +70,35 @@ values, unknown kinds, and fractional times fail with `ValueError`.
   payload: {gensets_online: 1}
 ```
 
-Structural payload validation happens at construction. State-dependent validation
-happens transactionally during stepping: if any event, measurement serialization,
-or callback fails, snapshot, context, RNG, log, event cursor and clock stay at the
-previous completed tick. Earlier ticks remain committed. Callback external side
+For live API/UI input, pass an ordered iterable of existing `Event` objects to
+`step(events=...)`. Every event must target exactly `runner.next_t_s`; past,
+future, fractional, or otherwise invalid times are rejected. Payloads are copied
+and structurally validated as the batch is consumed, before applying any events.
+Later caller mutation cannot change accepted inputs, context, or replay evidence.
+Injected batches are immediate inputs for one tick, not a persistent event queue.
+
+```python
+from pathlib import Path
+from shipos.contracts import Event
+from shipos.sim.runner import load_scenario, replay_jsonl
+
+runner = load_scenario(Path("data/scenarios/B.yaml"))
+runner.run(5)
+event = Event(
+    t_s=runner.next_t_s,
+    kind="battery_report",
+    payload={"guest_id": "G4", "battery_pct": 18},
+)
+snapshot = runner.step(events=[event])
+assert replay_jsonl(runner.jsonl).jsonl == runner.jsonl
+```
+
+Structural payload validation for the constructor timeline happens at construction.
+State-dependent validation happens transactionally during stepping: if any
+constructor or injected event, measurement serialization, or callback fails,
+snapshot, context, RNG, log, event cursor and clock stay at the
+previous completed tick. A failed injected batch is not queued; correct it and
+retry the same `next_t_s`. Earlier ticks remain committed. Callback external side
 effects cannot be rolled back; callbacks must be pure.
 
 `Profile(noise_fraction=..., pulses=[Pulse(start_s=..., end_s=...,
@@ -134,9 +162,15 @@ finite numbers, and LF. The wrapper contains `index`, `previous_hash`, `record`,
 `hash = SHA256(bytes.fromhex(previous_hash) + canonical(record)).hexdigest()`
 
 The first record embeds the initial snapshot, resolved ship/manifests/priorities,
-entire sorted timeline, seed, and profiles. Tick records contain snapshot, events,
-mode transitions, decisions, and availability status. `Decision.latency_ms` is
-excluded. Physical link latency limits in ship specifications remain replay inputs.
+entire sorted constructor timeline, seed, and profiles. Tick records contain
+snapshot, all applied events, mode transitions, decisions, and availability status.
+Ticks with live inputs also contain `injected_events`, only that tick's injected
+batch. Replay reinjects this field while obtaining constructor events from the
+header, so constructor events are not applied twice. Without injection, this
+optional field is omitted: existing version-1 log bytes and the documented hash
+are unchanged, and `replay_jsonl` continues to replay existing logs.
+`Decision.latency_ms` is excluded. Physical link latency limits in ship
+specifications remain replay inputs.
 No wall clock, execution timestamp, or measured performance enters canonical data.
 If an integration measures latency, retain it separately outside `runner.jsonl`.
 

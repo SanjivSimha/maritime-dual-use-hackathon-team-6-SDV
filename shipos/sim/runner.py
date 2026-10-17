@@ -122,6 +122,11 @@ class Runner:
         return deepcopy(self._context)
 
     @property
+    def next_t_s(self) -> int:
+        """Time of the next tick, including the initial tick before the first step."""
+        return self._next_s
+
+    @property
     def jsonl(self) -> bytes:
         return b"".join(self._lines)
 
@@ -133,9 +138,17 @@ class Runner:
         line, self._hash = chain_line(record, len(self._lines), self._hash)
         self._lines.append(line)
 
-    def step(self) -> WorldSnapshot:
-        """Emit the initial second on first call, then advance exactly one second per call."""
+    def step(self, events: Iterable[Event] = ()) -> WorldSnapshot:
+        """Step one second; apply timeline events first, then this tick's ordered live batch."""
         t_s = self._next_s
+        injected = []
+        for event in events:
+            if not isinstance(event, Event):
+                raise TypeError("injected events must be shared Event objects")
+            event = validate_event(event)
+            if event.t_s != t_s:
+                raise ValueError(f"injected event at {event.t_s:g}s must target next tick {t_s}s")
+            injected.append(event)
         data = self._snapshot.model_dump(mode="python")
         data["t_s"] = float(t_s)
         data["mission_days_left"] = max(
@@ -144,12 +157,13 @@ class Runner:
         context = self.context
         entered = self._entered.copy()
         cursor = self._cursor
-        events = []
+        batch = []
         while cursor < len(self._timeline) and self._timeline[cursor].t_s == t_s:
-            event = self._timeline[cursor]
-            context = self._apply(event, data, context)
-            events.append(event)
+            batch.append(self._timeline[cursor])
             cursor += 1
+        batch.extend(injected)
+        for event in batch:
+            context = self._apply(event, data, context)
         transitions = []
         rng = Random(0)
         rng.setstate(self._rng.getstate())
@@ -180,7 +194,7 @@ class Runner:
             try:
                 decisions = list(
                     self._decide(
-                        candidate.model_copy(deep=True), deepcopy(tuple(events)), deepcopy(context)
+                        candidate.model_copy(deep=True), deepcopy(tuple(batch)), deepcopy(context)
                     )
                 )
                 status = "available"
@@ -193,16 +207,17 @@ class Runner:
                 raise TypeError("decide callback must return only shared Decision objects")
             serialized.append(decision.model_dump(mode="json", exclude={"latency_ms"}))
         # Serialization must succeed before any simulator state (including RNG) is committed.
-        self._append(
-            {
-                "type": "tick",
-                "snapshot": candidate.model_dump(mode="json"),
-                "events": [e.model_dump(mode="json") for e in events],
-                "transitions": transitions,
-                "decisions": serialized,
-                "decision_status": status,
-            }
-        )
+        record = {
+            "type": "tick",
+            "snapshot": candidate.model_dump(mode="json"),
+            "events": [e.model_dump(mode="json") for e in batch],
+            "transitions": transitions,
+            "decisions": serialized,
+            "decision_status": status,
+        }
+        if injected:
+            record["injected_events"] = [e.model_dump(mode="json") for e in injected]
+        self._append(record)
         self._snapshot = candidate
         self._context = context
         self._entered = entered
@@ -299,7 +314,9 @@ def replay_jsonl(data: bytes, *, decide: Decide | None = None) -> Runner:
         profiles={k: Profile.model_validate(v) for k, v in header["profiles"].items()},
         decide=decide,
     )
-    runner.run(len(lines) - 1)
+    for line in lines[1:]:
+        record = json.loads(line)["record"]
+        runner.step(Event.model_validate(e) for e in record.get("injected_events", ()))
     if runner.jsonl != data:
         raise ValueError("replay differs: callback or simulator implementation changed")
     return runner
