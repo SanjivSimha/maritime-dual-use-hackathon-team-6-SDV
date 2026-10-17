@@ -1,5 +1,7 @@
-# Person A (@SanjivSimha): physics + decision engine. Person B (@asagberman): data, sim, UI, crew, docs.
-*                         @SanjivSimha @asagberman
+# Person A (@SanjivSimha): physics, engine, state machine, shared infrastructure.
+# Person B (@asagberman): data, sim, UI, crew, docs.
+# Branch-level enforcement (a/* vs b/*) is tools/check_ownership.py; keep the two in sync.
+*                         @SanjivSimha
 
 /shipos/physics/          @SanjivSimha
 /shipos/engine/           @SanjivSimha
@@ -10,7 +12,13 @@
 /shipos/api/              @asagberman
 /shipos/crew/             @asagberman
 /docs/                    @asagberman
+/schema/                  @asagberman
+/tests/sim/               @asagberman
+/tests/api/               @asagberman
+/tests/crew/              @asagberman
 
-# Shared contracts and CI need both people.
+# Shared: both people review.
 /shipos/contracts.py      @SanjivSimha @asagberman
-/.github/                 @SanjivSimha @asagberman
+/data/assumptions/        @SanjivSimha @asagberman
+/tests/fixtures/          @SanjivSimha @asagberman
+/docs/PLAN.md             @SanjivSimha @asagberman
