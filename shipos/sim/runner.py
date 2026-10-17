@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Iterable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from random import Random
 
@@ -17,6 +17,7 @@ from shipos.contracts import (
 from shipos.data import load_guests, load_priorities, load_ship, load_yaml
 from shipos.sim.consumption import Profile
 from shipos.sim.env_input import EnvironmentInput
+from shipos.sim.execution import Execution
 from shipos.sim.log import ZERO_HASH, chain_line, verify_jsonl
 from shipos.sim.timeline import tick_time, validate_event
 
@@ -27,6 +28,8 @@ class Context:
     manifests: dict[str, GuestManifest]
     priorities: PriorityFile
     cards: dict[str, GuestManifest]
+    protected: frozenset[str] = frozenset()
+    recovery_confirm: str = "human"
 
 
 Decide = Callable[[WorldSnapshot, tuple[Event, ...], Context], Iterable[Decision]]
@@ -45,9 +48,13 @@ class Runner:
         profiles: dict[str, Profile] | None = None,
         decide: Decide | None = None,
         environment: EnvironmentInput | None = None,
+        execution: bool = False,
     ):
         if environment is not None and not isinstance(environment, EnvironmentInput):
             raise TypeError("environment must be a captured EnvironmentInput")
+        if type(execution) is not bool:
+            raise TypeError("execution must be a bool")
+        self._execution = Execution() if execution else None
         self._environment = deepcopy(environment)
         self._snapshot = initial.model_copy(deep=True)
         self._context = deepcopy(Context(ship, manifests, priorities, {}))
@@ -61,6 +68,8 @@ class Runner:
         self._cursor = 0
         self._entered = {}
         self._validate_inputs()
+        if self._execution is not None:
+            self._execution.observe(self._snapshot.model_dump(), self._context)
         self._lines: list[bytes] = []
         self._hash = ZERO_HASH
         header = {
@@ -76,6 +85,8 @@ class Runner:
         }
         if self._environment is not None:
             header.update(version=2, environment=self._environment.record)
+        if execution:
+            header.update(version=3, execution=True)
         self._append(header)
 
     def _validate_inputs(self):
@@ -133,6 +144,27 @@ class Runner:
         return deepcopy(self._environment)
 
     @property
+    def execution_status(self) -> dict:
+        """Defensive JSON-compatible execution evidence; never an actuation API."""
+        if self._execution is None:
+            return {
+                "enabled": False,
+                "pending": [],
+                "applied": [],
+                "blocked": [],
+                "crew_gate": None,
+            }
+        return deepcopy(self._execution.status)
+
+    def reset(self) -> WorldSnapshot:
+        """Restore captured construction inputs, including weather, without reading files."""
+        import json
+
+        fresh = _from_header(json.loads(self._lines[0])["record"], self._decide)
+        self.__dict__ = fresh.__dict__
+        return self.snapshot
+
+    @property
     def next_t_s(self) -> int:
         """Time of the next tick, including the initial tick before the first step."""
         return self._next_s
@@ -175,21 +207,38 @@ class Runner:
             batch.append(self._timeline[cursor])
             cursor += 1
         batch.extend(injected)
+        execution = deepcopy(self._execution)
+        if execution is not None:
+            execution.observe(data, context)
         for event in batch:
+            if execution is None and event.kind in ("operator_confirmation", "battery_forecast"):
+                raise ValueError(f"{event.kind} requires execution=True")
             context = self._apply(event, data, context)
+            if execution is not None:
+                execution.event(event, data, context)
         transitions = []
         rng = Random(0)
         rng.setstate(self._rng.getstate())
+        if execution is not None:
+            execution.advance(data, context, entered, transitions)
+            context = replace(
+                context,
+                protected=execution.protected,
+                recovery_confirm=execution.status["crew_gate"]["confirm"],
+            )
         for key in sorted(data["guests"]):
             guest = data["guests"][key]
             manifest = context.manifests[key]
             # Explicit schedules at this second override an automatic boundary.
-            due = [s for s in guest["schedule"] if s["t_s"] == t_s]
-            guest["schedule"] = [s for s in guest["schedule"] if s["t_s"] > t_s]
+            due = [] if execution is not None else [s for s in guest["schedule"] if s["t_s"] == t_s]
+            if execution is None:
+                guest["schedule"] = [s for s in guest["schedule"] if s["t_s"] > t_s]
             for change in due:
                 self._transition(key, guest, change["mode"], t_s, entered, transitions, "scheduled")
             mode = manifest.mode(guest["mode"])
-            while mode.duration_min is not None and mode.next_mode is not None:
+            while (
+                execution is None and mode.duration_min is not None and mode.next_mode is not None
+            ):
                 boundary = entered[key] + mode.duration_min * 60
                 if boundary > t_s:
                     break
@@ -219,6 +268,19 @@ class Runner:
             if not isinstance(decision, Decision):
                 raise TypeError("decide callback must return only shared Decision objects")
             serialized.append(decision.model_dump(mode="json", exclude={"latency_ms"}))
+        if execution is not None:
+            execution.accept(decisions, data, context)
+            # Newly chosen zero-offset work may complete at this same tick.
+            execution.advance(data, context, entered, transitions)
+            context = replace(
+                context,
+                protected=execution.protected,
+                recovery_confirm=execution.status["crew_gate"]["confirm"],
+            )
+            for key, guest in data["guests"].items():
+                if guest["mode"] != candidate.guests[key].mode:
+                    guest["measured_kw"] = context.manifests[key].mode(guest["mode"]).power_kw
+            candidate = WorldSnapshot.model_validate(data)
         # Serialization must succeed before any simulator state (including RNG) is committed.
         record = {
             "type": "tick",
@@ -228,9 +290,12 @@ class Runner:
             "decisions": serialized,
             "decision_status": status,
         }
+        if execution is not None:
+            record["execution"] = execution.status
         if injected:
             record["injected_events"] = [e.model_dump(mode="json") for e in injected]
         self._append(record)
+        self._execution = execution
         self._snapshot = candidate
         self._context = context
         self._entered = entered
@@ -272,11 +337,8 @@ class Runner:
             card = GuestManifest.model_validate(payload["card"])
             context.cards[card.id] = card
         elif event.kind == "priority_swap":
-            context = Context(
-                context.ship,
-                context.manifests,
-                PriorityFile.model_validate(payload["priorities"]),
-                context.cards,
+            context = replace(
+                context, priorities=PriorityFile.model_validate(payload["priorities"])
             )
         return context
 
@@ -294,6 +356,7 @@ def load_scenario(
     *,
     decide: Decide | None = None,
     environment: EnvironmentInput | None = None,
+    execution: bool = False,
 ) -> Runner:
     """Load a scenario's explicit snapshot, seed, profiles and sibling timeline YAML."""
     from shipos.sim.timeline import load_timeline
@@ -311,6 +374,7 @@ def load_scenario(
         profiles={k: Profile.model_validate(v) for k, v in data["profiles"].items()},
         decide=decide,
         environment=environment,
+        execution=execution,
     )
 
 
@@ -321,14 +385,28 @@ def replay_jsonl(data: bytes, *, decide: Decide | None = None) -> Runner:
     verify_jsonl(data)
     lines = data.splitlines()
     header = json.loads(lines[0])["record"]
-    if header["type"] != "initial" or header["version"] not in (1, 2):
+    runner = _from_header(header, decide)
+    for line in lines[1:]:
+        record = json.loads(line)["record"]
+        runner.step(Event.model_validate(e) for e in record.get("injected_events", ()))
+    if runner.jsonl != data:
+        raise ValueError("replay differs: callback or simulator implementation changed")
+    return runner
+
+
+def _from_header(header: dict, decide: Decide | None) -> Runner:
+    if header["type"] != "initial" or header["version"] not in (1, 2, 3):
         raise ValueError("unsupported replay header")
+    if header["version"] == 3 and header.get("execution") is not True:
+        raise ValueError("replay version 3 requires explicit execution=True")
+    if header["version"] != 3 and "execution" in header:
+        raise ValueError("execution requires replay version 3")
     environment = None
-    if header["version"] == 2:
+    if "environment" in header and header["version"] in (2, 3):
         environment = EnvironmentInput.from_record(header.get("environment"))
     elif "environment" in header:
         raise ValueError("captured environment requires replay version 2")
-    runner = Runner(
+    return Runner(
         WorldSnapshot.model_validate(header["initial"]),
         ship=ShipSpec.model_validate(header["ship"]),
         manifests={k: GuestManifest.model_validate(v) for k, v in header["manifests"].items()},
@@ -338,10 +416,5 @@ def replay_jsonl(data: bytes, *, decide: Decide | None = None) -> Runner:
         profiles={k: Profile.model_validate(v) for k, v in header["profiles"].items()},
         decide=decide,
         environment=environment,
+        execution=header.get("execution", False),
     )
-    for line in lines[1:]:
-        record = json.loads(line)["record"]
-        runner.step(Event.model_validate(e) for e in record.get("injected_events", ()))
-    if runner.jsonl != data:
-        raise ValueError("replay differs: callback or simulator implementation changed")
-    return runner
