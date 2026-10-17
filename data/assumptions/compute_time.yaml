@@ -12,3 +12,18 @@ assumptions:
   - {id: compute.g4.accelerators, value: 1, unit: accelerators, why: Person-in-water detection on drone video., source: invented}
   - {id: compute.g5.cores, value: 4, unit: cores, why: The node brings its own edge compute; the rack only hosts its control plane., source: invented}
   - {id: compute.g5.mem_gb, value: 16, unit: GB, why: See compute.g5.cores., source: invented}
+  - id: placement.margin_tie_tolerance
+    value: 0.01
+    unit: normalised margin
+    why: Placements whose minimum margins differ by less than 1 % are treated as equal, so the flexibility and preference criteria decide instead of noise.
+    source: invented
+  - id: placement.max_candidates
+    value: 200000
+    unit: assignments
+    why: Solver budget guard. The five-card problem has fewer than 100 assignments; above this limit the search refuses rather than blowing the 30 s ceiling.
+    source: invented
+  - id: placement.alternatives_reported
+    value: 3
+    unit: options
+    why: D2 must show the alternatives considered; three are enough for an operator to see why the choice won.
+    source: invented
