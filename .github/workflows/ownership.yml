@@ -1,0 +1,32 @@
+name: Ownership
+
+# a/* branches may not change Person B's files, b/* branches may not change Person A's.
+# Rules live in tools/check_ownership.py (stdlib only, no uv sync needed).
+
+on:
+  pull_request:
+
+concurrency:
+  group: ownership-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ownership:
+    name: File ownership
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Changed files stay in the branch's track
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # --no-renames: a move counts as touching both the old and the new path.
+          git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" \
+            | python3 -m tools.check_ownership "$HEAD_REF"
