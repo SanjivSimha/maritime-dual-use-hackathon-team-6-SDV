@@ -178,3 +178,82 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         assert page.locator(".gauge").count() == 8
         assert not errors and not external
         browser.close()
+
+
+def test_browser_complete_card_import_offline_replay_and_reset(server):
+    playwright = pytest.importorskip("playwright.sync_api")
+    chrome = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / (
+        "Google/Chrome/Application/chrome.exe"
+    )
+    if not chrome.exists():
+        pytest.skip("Local Chrome required; no browser download during tests")
+    from shipos.api.adapter import replay_evidence
+
+    with playwright.sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=str(chrome), headless=True)
+        page = browser.new_page()
+        errors, external = [], []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+
+        def local_only(route):
+            if route.request.url.startswith(server + "/"):
+                route.continue_()
+            else:
+                external.append(route.request.url)
+                route.abort()
+
+        page.route("**/*", local_only)
+        page.goto(server)
+        page.wait_for_function("state?.guests?.G4")
+        page.select_option("#card", "G4")
+        card = json.loads(page.locator("#cardJson").input_value())
+        assert card["id"] == "G4"
+        card["id"] = "JUDGE-BROWSER"
+        card["name"] = "<img src=x onerror=alert(1)>"
+        next(mode for mode in card["modes"] if mode["name"] == "charging")["power_kw"] = 37
+        page.fill("#cardJson", json.dumps(card))
+        page.click("#importCard button")
+        page.wait_for_function("state.proposed_cards['JUDGE-BROWSER']?.id === 'JUDGE-BROWSER'")
+        page.wait_for_function("document.querySelector('#card').value === 'JUDGE-BROWSER'")
+        assert page.evaluate("state.decision.subject") == "JUDGE-BROWSER"
+        assert not page.evaluate("Object.hasOwn(state.snapshot.guests, 'JUDGE-BROWSER')")
+        assert (
+            page.locator('#card option[value="JUDGE-BROWSER"]').inner_text().endswith(card["name"])
+        )
+        assert page.locator("#decision img, #decision script").count() == 0
+        page.fill("#value", "0.8")
+        page.click("#admit button")
+        page.wait_for_function("state.proposed_cards['JUDGE-BROWSER'].mass_t === 0.8")
+        assert (
+            next(
+                mode
+                for mode in json.loads(page.locator("#cardJson").input_value())["modes"]
+                if mode["name"] == "charging"
+            )["power_kw"]
+            == 37
+        )
+        sid = page.evaluate("state.id")
+        before = httpx.get(f"{server}/api/sessions/{sid}/evidence").json()
+        for invalid in ["{", json.dumps(card)[:-1] + ',"area_m2":1e999}']:
+            page.fill("#cardJson", invalid)
+            page.click("#importCard button")
+            page.wait_for_function("document.querySelector('#error').textContent.length > 0")
+            assert page.locator("#cardJson").input_value() == invalid
+            assert httpx.get(f"{server}/api/sessions/{sid}/evidence").json() == before
+        page.click("#replay")
+        page.wait_for_function("state.replay?.byte_identical === true")
+        with page.expect_download() as download:
+            page.click("#export")
+        saved = json.loads(Path(download.value.path()).read_text())
+        assert saved == before
+        assert replay_evidence(saved)["byte_identical"]
+        assert (
+            httpx.get(f"{server}/api/sessions/{sid}/replay.jsonl").content
+            == saved["jsonl"].encode()
+        )
+        page.click("#reset")
+        page.wait_for_function("state.next_t_s === 0 && !state.proposed_cards['JUDGE-BROWSER']")
+        assert page.locator('#card option[value="JUDGE-BROWSER"]').count() == 0
+        assert json.loads(page.locator("#cardJson").input_value())["id"] != "JUDGE-BROWSER"
+        assert not errors and not external
+        browser.close()

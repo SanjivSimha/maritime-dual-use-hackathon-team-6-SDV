@@ -15,7 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from shipos.api import adapter
-from shipos.contracts import Decision, GuestManifest, PriorityFile, ResourceClass
+from shipos.api.cards import validate_manifest
+from shipos.contracts import Decision, PriorityFile, ResourceClass
 from shipos.data import load_priorities
 from shipos.engine import arbitration, shedding
 from shipos.paths import DATA_DIR
@@ -48,6 +49,7 @@ class Command(BaseModel):
         "replay",
     ]
     card: str | None = None
+    manifest: dict | None = None
     value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     priority: str | None = None
     crew: Literal[0, 6, 14] | None = None
@@ -83,7 +85,6 @@ def apply(state: Session, cmd: Command) -> Session:
     if cmd.op == "reset":
         return Session(state.id)
     required = {
-        "admit": "card",
         "crew": "crew",
         "priority": "priority",
         "scenario": "scenario",
@@ -105,13 +106,20 @@ def apply(state: Session, cmd: Command) -> Session:
     catalogue = {**context.manifests, **context.cards}
     inputs = []
     if cmd.op == "admit":
-        if cmd.card not in catalogue or cmd.card in state.snapshot.guests:
-            raise ValueError("Select a proposed card that is not already aboard")
-        if cmd.value is None:
-            raise ValueError("A finite, nonnegative mass_t value is required")
-        raw = catalogue[cmd.card].model_dump()
-        raw["mass_t"] = cmd.value
-        card = GuestManifest.model_validate(raw)
+        if cmd.manifest is not None:
+            if cmd.card is not None or cmd.value is not None:
+                raise ValueError("Submit either a complete manifest or a catalog card/mass edit")
+            card = validate_manifest(cmd.manifest, catalogue)
+        else:
+            if cmd.card not in catalogue:
+                raise ValueError("Select a proposed catalog card or submit a complete manifest")
+            if cmd.value is None:
+                raise ValueError("A finite, nonnegative mass_t value is required")
+            raw = catalogue[cmd.card].model_dump()
+            raw["mass_t"] = cmd.value
+            card = validate_manifest(raw, catalogue)
+        if card.id in state.snapshot.guests:
+            raise ValueError("Cannot replace installed equipment; submit a proposed guest ID")
         inputs = [("card_presented", {"card": card.model_dump(mode="json")})]
     elif cmd.op in ("crew", "priority"):
         if cmd.op == "crew":

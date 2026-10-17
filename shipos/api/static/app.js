@@ -26,6 +26,10 @@ async function command(cmd) {
     const result = await response.json();
     if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : json(result.detail));
     render(result);
+    if (cmd.op === "admit" && cmd.manifest) {
+      $("card").value = cmd.manifest.id;
+      fillCard();
+    }
   } catch (error) {
     $("error").textContent = error.message;
     if (state) syncControls();
@@ -39,7 +43,7 @@ function syncControls() {
 }
 function render(data) {
   const oldCard = $("card").value;
-  const oldMass = state?.guests?.[oldCard]?.mass_t;
+  const oldManifest = json(state?.guests?.[oldCard]);
   state = data;
   syncControls();
   $("modeBadge").textContent = state.mode;
@@ -55,10 +59,10 @@ function render(data) {
     `${id}: ${rt.mode}${rt.battery_pct == null ? "" : " · battery " + number(rt.battery_pct) + "%"}`
   ).join(" | ");
   $("stateStrip").textContent = `t = ${number(snap.t_s)} s · ${snap.ship.speed_kn} kn · ${snap.ship.course} course · ${snap.ship.noise} · deck ${snap.ship.deck} · ${snap.platform.gensets_online} gensets · ${snap.env.seawater_c} °C seawater · ${snap.crew} crew`;
-  const proposed = Object.values(state.guests).filter(g => !snap.guests[g.id]);
+  const proposed = Object.values(state.guests).filter(g => !Object.hasOwn(snap.guests, g.id));
   const selected = proposed.some(g => g.id === oldCard) ? oldCard : proposed[0]?.id;
   options($("card"), proposed.map(g => [g.id, `${g.id} · ${g.name}`]), selected);
-  if (selected !== oldCard || oldMass !== state.guests[selected]?.mass_t || !$("value").value) fillMass();
+  if (selected !== oldCard || oldManifest !== json(state.guests[selected]) || !$("cardJson").value) fillCard();
   $("admit").querySelector("button").disabled = !selected;
   $("gauges").replaceChildren(...state.gauges.map(g => {
     const box = node("article", undefined, "gauge");
@@ -85,8 +89,9 @@ function render(data) {
     $("log").prepend(node("li", `LIVE t=${unavailable.t_s} s · ${unavailable.events.join(", ")} · ${unavailable.status}. No actions applied.`));
   }
 }
-function fillMass() {
+function fillCard() {
   $("value").value = state.guests[$("card").value]?.mass_t ?? "";
+  $("cardJson").value = json(state.guests[$("card").value]) ?? "";
 }
 function renderDecision(d) {
   const el = $("decision");
@@ -157,11 +162,24 @@ $("admit").onsubmit = event => {
   event.preventDefault();
   command({op: "admit", card: $("card").value, value: Number($("value").value)});
 };
-$("card").onchange = fillMass;
+$("card").onchange = fillCard;
+$("importCard").onsubmit = event => {
+  event.preventDefault();
+  $("error").textContent = "";
+  try {
+    const manifest = JSON.parse($("cardJson").value, (key, value) => {
+      if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Card numbers must be finite");
+      return value;
+    });
+    command({op: "admit", manifest});
+  } catch (error) {
+    $("error").textContent = error.message;
+  }
+};
 for (const id of ["mode", "scenario", "priority", "crew"]) {
   $(id).onchange = () => command({op: id, [id]: id === "crew" ? Number($(id).value) : $(id).value});
 }
-$("reset").onclick = () => { $("value").value = ""; command({op: "reset"}); };
+$("reset").onclick = () => { $("value").value = ""; $("cardJson").value = ""; command({op: "reset"}); };
 document.querySelectorAll("[data-op]").forEach(b => b.onclick = () => command({op: b.dataset.op}));
 document.querySelectorAll("[data-event]").forEach(b => b.onclick = () => command({
   op: "event", event: b.dataset.event, battery_pct: Number($("battery").value)

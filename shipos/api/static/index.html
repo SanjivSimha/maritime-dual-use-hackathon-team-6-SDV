@@ -48,6 +48,12 @@
           <button>Run real admission</button>
         </form>
         <p>Edits update this session's validated manifest. Evaluation does not install equipment.</p>
+        <form id="importCard">
+          <label for="cardJson">Complete card JSON (edit any supported field or use a new ID)</label>
+          <textarea id="cardJson" rows="14" spellcheck="false" required></textarea>
+          <button>Validate JSON and run real admission</button>
+        </form>
+        <p>Select a card to populate the editor. Submit resolved values; installed IDs cannot be replaced. The mass shortcut uses the selected stored card, not unsaved JSON edits.</p>
         <h2>Decision</h2><article id="decision">Select a card and evaluate.</article>
         <h2>Engine and event controls</h2>
         <div class="controls">

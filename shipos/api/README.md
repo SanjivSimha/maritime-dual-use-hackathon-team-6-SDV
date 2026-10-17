@@ -90,6 +90,60 @@ Examples:
 - {"op":"scenario","scenario":"B"}
 - {"op":"replay"} or {"op":"reset"}
 
+Complete judge-card JSON input:
+
+1. Select a catalog/proposed card to populate **Complete card JSON**. Edit any
+   supported GuestManifest field, or replace the JSON with an unfamiliar card.
+   Give new equipment its own nonempty ID. Click **Validate JSON and run real admission**.
+2. The quick **Body mass** / **Run real admission** control remains available. It
+   edits the selected stored card; it does not submit unsaved JSON-editor changes.
+   Successful JSON imports become selectable proposed cards. Evaluation never
+   installs equipment or replaces an installed guest.
+3. Reset removes imported proposed cards and their evidence. Priority/crew changes
+   rerun real admission for imported proposals just like catalog proposals.
+
+This complete working command can be sent to
+`POST /api/sessions/{id}/commands` or the existing WebSocket. In the browser editor,
+paste only the inner `manifest` object:
+
+```json
+{
+  "op": "admit",
+  "manifest": {
+    "id": "JUDGE7",
+    "name": "Civil air-quality sampler",
+    "mass_t": 0.2,
+    "cooling": "water",
+    "preferred": ["hangar"],
+    "allowed": ["hangar"],
+    "modes": [{"name": "sampling", "power_kw": 3}],
+    "initial_mode": "sampling",
+    "capability": {
+      "name": "Air-quality sampling",
+      "value_by_mission": {"survey": "medium"}
+    },
+    "installation": {"where": "port_only", "people": 2, "hours": 1}
+  }
+}
+```
+
+For example, change `modes[0].power_kw` from 3 to 7 and submit again. The engine
+receives that power unchanged; a supported edit need not change the verdict.
+Omitted optional contract fields receive existing contract defaults. JSON must be
+fully resolved: `$assumption` strings, nonfinite numbers (including numeric-string
+coercions), missing required fields, malformed structures, duplicate/unknown mode
+references and invalid guest references are rejected. The API uses GuestManifest
+and the existing `guest_errors` helper. Installed-ID collisions and mixed
+`manifest` plus `card`/`value` submissions are rejected too. Rejected commands do
+not alter session state, snapshot, proposed cards, RNG or canonical evidence.
+
+The full validated card is carried in the existing `card_presented` Event and
+stored in Runner's separate proposed-card context. Incumbent manifests and
+installed runtimes remain unchanged. Export contains the complete card; execution
+replay needs no card file. Existing runtime/code/assumption-registry replay limits
+still apply. All labels/errors/JSON use text/value rendering, with no HTML injection
+or external editor assets. No files are uploaded and no card paths are accepted.
+
 Tests: `.\.tools\uv.exe run --locked pytest tests/api -rs` runs admission, simulator,
 replay and actual Uvicorn WebSocket tests with locked dependencies. Browser checks
 skip if Playwright/local Windows Chrome is absent. To run them without adding any
