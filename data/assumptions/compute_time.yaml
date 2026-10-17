@@ -52,3 +52,18 @@ assumptions:
     unit: s/h
     why: Unit conversion.
     source: definition
+  - id: time.min_per_day
+    value: 1440
+    unit: min/day
+    why: Unit conversion. Losing an asset costs its weight × the mission minutes left without it.
+    source: definition
+  - id: units.percent
+    value: 100
+    unit: "%"
+    why: Unit conversion for battery percentages.
+    source: definition
+  - id: display.minute_decimals
+    value: 1
+    unit: decimals
+    why: Minutes are reported to 0.1 min in decisions.
+    source: invented
