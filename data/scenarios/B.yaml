@@ -1,0 +1,38 @@
+# Baseline inputs, not engine outcomes. Measurements are synthetic demonstration data.
+seed: 6
+priorities: survey_primary
+timeline: B.timeline.yaml
+profiles:
+  G5: {noise_fraction: 0.02}
+initial:
+  t_s: 0
+  ship:
+    speed_kn: 3
+    course: steady
+    noise: quiet
+    deck: occupied
+    emission: normal
+  platform: {gensets_online: 2, cooling_degraded: false, situation: at_sea}
+  env: {seawater_c: 24, sea_state: 3, wind_kn: 22}
+  crew: 14
+  mission_days_left: 14
+  guests:
+    G1:
+      id: G1
+      mode: "on"
+      placement: {slots: {body: mast3}, line: stbd}
+    G3:
+      id: G3
+      mode: surveying
+      activity: survey_leg
+      activity_started_s: 0
+      placement: {slots: {body: bay1}, line: port}
+    G4:
+      id: G4
+      mode: flying
+      battery_pct: 30
+      placement: {slots: {body: hangar}, line: port}
+    G5:
+      id: G5
+      mode: "on"
+      placement: {slots: {body: bay2, antenna: hangar_roof}, line: stbd}

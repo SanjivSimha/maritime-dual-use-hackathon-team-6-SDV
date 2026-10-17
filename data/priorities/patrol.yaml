@@ -1,0 +1,8 @@
+# Mission-priority file for a civil patrol (fisheries / environmental protection). Weights come from
+# each card's capability level for "patrol": G1 high, G4 medium, everything else its default.
+id: patrol
+mission: patrol
+levels: {high: "$priority.level.high", medium: "$priority.level.medium", low: "$priority.level.low"}
+overrides: {}
+mission_critical_threshold: "$priority.mission_critical_threshold"
+protect_arbitration_winner: true
