@@ -51,7 +51,7 @@ Tested interaction sequence:
 3. Reset restores LIVE A, original inputs, seed 0, empty proposed cards/history,
    initial runner log/hash, priority and crew. Selecting a scenario or preview mode
    also starts a fresh runner and replay. Mode-only changes preserve the selected
-   scenario: B → SAMPLE → LIVE remains B, with a fresh B baseline each time.
+   scenario: B ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ SAMPLE ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ LIVE remains B, with a fresh B baseline each time.
    Explicit Reset still restores A. B's documented YAML seed is 6.
 4. Select B (LIVE simulator), enter battery report 13, inject battery report.
    G4's actual snapshot percentage changes at t=0; its mode remains flying.
@@ -59,8 +59,9 @@ Tested interaction sequence:
    one simulated second. Every injected event targets public runner.next_t_s.
 5. Click Step (t=1), fast-forward 3 ticks (t=4), then inject genset trip (t=5).
    Platform status becomes one generator. Real D4 answers no_action (49.5 kW fits). HTTP and WebSocket
-   receive the same updated snapshots. No action-applier or crew policy runs, and
-   the session Runner does not use the cached environment (`EnvironmentInput` is an
+   receive the same updated snapshots. Observation mode does not apply actions.
+   The baseline uses scenario weather; an explicit environment command captures the cache.
+   (`EnvironmentInput` is an
    explicit opt-in for direct Runner use only).
 6. Click Verify by replaying: integrity is checked and the complete run is
    re-executed with the same callback and captured admission envelope. Every actual
@@ -90,7 +91,7 @@ the API command without committing its snapshot, context, RNG, history or log.
 Direct D3/D4 buttons ("Ask the engine") are read-only queries outside canonical simulation
 records; D3 needs G4 aboard, so in Scenario A it is refused with that reason;
 only an explicitly selected SAMPLE mode previews fixtures. Preview results are
-never added to runner.jsonl. The runner records Decisions but never applies actions.
+never added to runner.jsonl. Observation mode records Decisions without applying actions. Opt-in execution is gated on the public executor.
 
 Replay portability limits: the bundle preserves the admission envelope in addition
 to the runner header's ship, manifests, priorities, timeline, seed and profiles.
@@ -124,3 +125,76 @@ skip if Playwright/local Windows Chrome is absent. To run them without adding an
 project dependency: `.\.tools\uv.exe run --offline --with playwright pytest tests/api -rs`.
 The browser test blocks external requests and uses installed Chrome; no browser is
 downloaded. Only Playwright test tooling uses an overlay, never the WebSocket backend.
+
+
+## Runtime API v2 integration contract (implementation in progress)
+
+Commands use the existing POST /api/sessions/{id}/commands and WebSocket /ws/{id}.
+Claude can build controls against these exact payloads:
+
+```json
+{"op":"execution","enabled":true,"fresh_run":true}
+{"op":"execution","enabled":false,"fresh_run":true}
+{"op":"confirm_deck","by":"deck officer"}
+{"op":"environment","fresh_run":true,"environment":{"source":"strait_of_sicily","scenario_start":"2026-10-17T08:00:00+02:00","layered_water":false,"timezone_offset_min":120,"allow_stale":false}}
+{"op":"environment","fresh_run":true,"environment":{"source":"scenario"}}
+```
+
+Execution/environment commands require explicit fresh_run=true. They retain the
+selected scenario, priority and crew, reset the Runner reproducibly, and archive
+prior evidence. `confirm_deck` is stamped at runner.next_t_s (simulation time),
+not wall time, and becomes an operator_confirmation event. It is not a command
+to clear the deck. Crew/executor validation may reject it.
+
+Existing snapshot responses gain:
+- execution: {enabled: boolean, status: <school's defensive JSON execution_status>}
+- crew_policy: {permitted, confirm, confirmation, blockers, requests}; a planner's
+  confirm=human requirement is distinct from confirmation=received.
+- environment: {configuration, provenance, windows, eligibility_only: true}; windows
+  are eligibility only, never permission to install/recover. Source is a fixed
+  catalog key; no arbitrary paths, runtime downloads or network fallback.
+- previous_runs: [{run: integer, final_hash: string}]; GET /api/sessions/{id}/evidence?run=N
+  exports archived evidence. Existing export without run selects the current run.
+
+Observation remains the default. Execution opt-in is unavailable until the real
+public Runner seam is imported. Admission never installs proposed cards. Longer
+execution runs will be enabled only to the executor's published/tested horizon.
+
+
+Current runtime adapter verification: cached environment uses only the allowlisted
+strait_of_sicily cache and validates initial coverage before starting a fresh run.
+Daylight eligibility uses an explicit fixed UTC offset in minutes; no IANA-zone or
+DST behavior is implied. Provenance describes cached model forecasts, not live sensors.
+All fresh resets retain the old evidence at the returned previous_runs indices;
+unknown archived indices return 404. Snapshot weather changes on the first Runner
+tick, never by modifying physical inputs in browser rendering.
+
+Substantive review gate: #35 is ready, but the automated review action skipped its
+review because the API key was absent. A green job alone is not merge approval.
+Current executor dependency #36 is still contract-only; enabling execution returns
+an explicit unavailable error until finished code is imported and verified. There
+is no substitute action-applier in this API. Track A/shared blockers are issue #39.
+
+
+Request-time-base labels are explicit: Decision.state_requests use absolute simulation
+seconds (top-level state_request_time_base), while crew_policy.requests use offsets
+relative to the response snapshot (crew_policy.request_time_base=snapshot_relative).
+The API never applies crew preparation requests. Executor integration must consume
+only supported, unambiguous producer semantics. D3 protection is now forwarded from
+the public context; the lifetime must come from the executor's reviewed policy.
+Human planning requirements are never treated as received operator confirmation.
+
+
+Verified offline launch from C:/Users/asagb/Projects/shipos-main-integrate:
+
+```powershell
+& "C:\Users\asagb\Projects\shipos-main\.tools\uv.exe" run --locked --offline python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8011 --ws websockets-sansio
+```
+
+http://127.0.0.1:8011/ was exercised through real HTTP environment selection,
+step and execution replay. The captured-environment run replayed byte-identically
+(final hash d7af375109c963dea21a9a8bdfe2a248c282d0a4eae613052b7b96debfe96fde).
+Enabling unfinished execution returned readable 422 rather than a sample or a
+fabricated action. Current API proof is 397 tests passed, one optional browser skip;
+35 API/browser tests passed using local Chrome and the Playwright tooling overlay.
+All five required GitHub checks pass at f760f70; substantive runtime review is pending.
