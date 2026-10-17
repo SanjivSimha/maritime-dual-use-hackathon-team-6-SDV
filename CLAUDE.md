@@ -37,6 +37,9 @@ touching `shipos/engine` or `shipos/physics`.
 - Person B — `data/`, `shipos/sim/`, `shipos/api/`, `shipos/crew/`, `docs/`
 - Cross-track handoffs go through `tests/fixtures/*.json`; update the fixture in the same PR that
   changes an output shape.
+- Shared (either track): `contracts.py`, `data/assumptions/`, `tests/fixtures/`, top-level tests,
+  CI, Makefile, `docs/PLAN.md`. The `File ownership` CI check fails a/* PRs that touch B's files
+  and vice versa; the full map is `tools/check_ownership.py`.
 
 ## Git / PR workflow
 - Branch from fresh `origin/main`: `a/<topic>` or `b/<topic>` (CI rejects other names).
