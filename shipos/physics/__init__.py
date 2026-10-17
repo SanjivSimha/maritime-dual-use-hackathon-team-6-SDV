@@ -2,3 +2,4 @@
 
 Every number comes from the assumption registry, never a literal.
 """
+# ownership-check test
