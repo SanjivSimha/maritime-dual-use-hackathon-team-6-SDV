@@ -111,6 +111,8 @@ def describe(b: ConstraintResult) -> str:
             f"{f.get('waiting_for')} takes {dem} min"
         )
     if r == "time.ready":
+        if f.get("blocker"):
+            return f"{f.get('guest')} cannot start {f.get('activity')}: {f['blocker']}"
         return f"readying the ship for {f.get('guest')} takes {dem} min of the {cap} min it has"
     if r.startswith("time.safety_command."):
         return (
