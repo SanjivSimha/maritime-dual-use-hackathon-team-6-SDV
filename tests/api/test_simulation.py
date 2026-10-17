@@ -6,8 +6,9 @@ from fastapi.testclient import TestClient
 
 from shipos.api import adapter
 from shipos.api.server import create_app
-from shipos.contracts import Envelope
-from shipos.data import load_guests, load_priorities
+from shipos.contracts import Envelope, WorldSnapshot
+from shipos.data import load_guests, load_priorities, load_ship
+from shipos.engine import arbitration
 from shipos.sim.log import chain_line
 
 
@@ -84,7 +85,20 @@ def test_injection_websocket_http_agreement_and_invalid_atomicity(client):
         update = ws.receive_json()
         assert update["snapshot"]["guests"]["G4"]["battery_pct"] == 17
         assert update["snapshot"]["guests"]["G4"]["mode"] == "flying"
-        assert update["decision"] is None and "unavailable" in update["notice"]
+        # The battery report runs real D3 on the recorded snapshot (not a fixture).
+        decision = update["decision"]
+        assert decision["kind"] == "arbitration" and update["unavailable"] == []
+        direct = arbitration.decide(
+            load_ship(),
+            load_guests(),
+            WorldSnapshot.model_validate(update["snapshot"]),
+            load_priorities("survey_primary"),
+            "G4",
+            "recovery",
+        )
+        assert decision == direct.model_dump(mode="json", exclude={"latency_ms"}) | {
+            "latency_ms": None
+        }
         assert client.get(f"/api/sessions/{sid}").json() == update
         response = cmd(client, sid, op="event", event="genset_trip")
         assert ws.receive_json() == response
@@ -126,7 +140,9 @@ def test_baseline_b_timeline_horizon_and_true_nominal_load(client):
         for gid, rt in state["snapshot"]["guests"].items()
     )
     assert nominal == 49.5
-    assert state["unavailable"][-1]["t_s"] == 720
+    # Real D4 at the minute-12 trip: 49.5 kW fits, so no shedding is invented.
+    assert state["unavailable"] == []
+    assert state["decision"]["kind"] == "shedding" and state["decision"]["verdict"] == "no_action"
     before = evidence(client, sid)
     assert client.post(f"/api/sessions/{sid}/commands", json={"op": "step"}).status_code == 422
     assert evidence(client, sid) == before
@@ -235,9 +251,9 @@ def test_mode_switch_preserves_b_and_starts_fresh_runner_then_reset_restores_a(c
             assert preview["decision"]["rationale"].startswith("SAMPLE")
         else:
             assert "LIVE" in state["notice"]
-            unavailable = cmd(client, sid, op="arbitration")
-            assert unavailable["decision"] is None
-            assert "unavailable" in unavailable["notice"]
+            live = cmd(client, sid, op="arbitration")
+            assert live["decision"]["kind"] == "arbitration"
+            assert not live["decision"]["rationale"].startswith("SAMPLE")
         assert evidence(client, sid) == baseline_b
     reset = cmd(client, sid, op="reset")
     assert reset["scenario"] == "A" and reset["mode"] == "LIVE"

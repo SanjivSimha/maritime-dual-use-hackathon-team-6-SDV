@@ -272,7 +272,7 @@ def test_log_detects_tampering_truncation_and_wrong_callback(initial):
         replay_jsonl(sim.jsonl, decide=lambda *args: [])
 
 
-def test_latency_is_excluded_and_engine_stubs_are_explicit(initial):
+def test_latency_is_excluded_and_engine_unavailability_is_explicit(initial):
     decision = json.loads((REPO_DIR / "tests/fixtures/decision_arbitration.json").read_text())
     sims = []
     for latency in [1, 999]:
@@ -285,6 +285,7 @@ def test_latency_is_excluded_and_engine_stubs_are_explicit(initial):
         sims.append(sim)
     assert sims[0].jsonl == sims[1].jsonl
     assert "latency_ms" not in records(sims[0])[-1]["decisions"][0]
+    # D3 / D4 are real engines now: their Decisions are recorded and replay byte-identically.
     for call in [
         lambda snap, events, ctx: [
             arbitration.decide(ctx.ship, ctx.manifests, snap, ctx.priorities, "G4", "recovery")
@@ -293,9 +294,19 @@ def test_latency_is_excluded_and_engine_stubs_are_explicit(initial):
     ]:
         sim = runner(initial, decide=call)
         sim.step()
-        assert records(sim)[-1]["decision_status"] == "engine_not_implemented"
-        assert records(sim)[-1]["decisions"] == []
+        assert records(sim)[-1]["decision_status"] == "available"
+        assert len(records(sim)[-1]["decisions"]) == 1
         assert replay_jsonl(sim.jsonl, decide=call).jsonl == sim.jsonl
+
+    # An engine that raises NotImplementedError is still recorded explicitly, never substituted.
+    def unavailable(snap, events, ctx):
+        raise NotImplementedError("engine unavailable")
+
+    sim = runner(initial, decide=unavailable)
+    sim.step()
+    assert records(sim)[-1]["decision_status"] == "engine_not_implemented"
+    assert records(sim)[-1]["decisions"] == []
+    assert replay_jsonl(sim.jsonl, decide=unavailable).jsonl == sim.jsonl
 
 
 def test_changed_card_reaches_real_admission(initial):

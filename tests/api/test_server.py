@@ -89,13 +89,26 @@ def test_websocket_real_command_and_http_broadcast(client):
         assert ws.receive_json()["guests"]["G4"]["mass_t"] == load_guests()["G4"].mass_t
 
 
-def test_modes_unavailability_and_reset(client):
+def test_modes_unavailability_and_reset(client, monkeypatch):
     state = session(client)
-    for engine in ["arbitration", "shedding"]:
-        result = command(client, state, op=engine).json()
-        assert result["decision"] is None
-        assert "unavailable" in result["notice"].lower()
-        assert result["mode"] == "LIVE"
+    # Scenario A has no drone aboard: D3 is refused with the precise reason, state unchanged.
+    refused = command(client, state, op="arbitration")
+    assert refused.status_code == 422 and "G4" in refused.json()["detail"]
+    assert client.get(f"/api/sessions/{state['id']}").json() == state
+    # D4 is the real engine now: a computed decision, not a fixture or a stub.
+    shed = command(client, state, op="shedding").json()
+    assert shed["mode"] == "LIVE" and shed["decision"]["kind"] == "shedding"
+    assert not shed["decision"]["rationale"].startswith("SAMPLE")
+    # The explicit fallback still reports unavailability when an engine raises it.
+    from shipos.engine import shedding
+
+    def not_implemented(*args, **kwargs):
+        raise NotImplementedError("engine unavailable in this test")
+
+    monkeypatch.setattr(shedding, "plan", not_implemented)
+    result = command(client, state, op="shedding").json()
+    assert result["decision"] is None and "unavailable" in result["notice"].lower()
+    monkeypatch.undo()
     live_b = command(client, state, op="scenario", scenario="B")
     assert live_b.status_code == 200
     assert live_b.json()["mode"] == "LIVE"
@@ -107,7 +120,7 @@ def test_modes_unavailability_and_reset(client):
         assert "SAMPLE" in preview["notice"]
         assert preview["decision"]["rationale"].startswith("SAMPLE")
     event = command(client, state, op="event", event="genset_trip").json()
-    assert "unavailable" in event["notice"].lower()
+    assert event["decision"]["kind"] == "shedding" and event["unavailable"] == []
     reset = command(client, state, op="reset").json()
     assert reset["mode"] == "LIVE" and reset["scenario"] == "A"
     assert reset["priority"]["id"] == load_priorities("survey_primary").id

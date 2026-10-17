@@ -162,6 +162,8 @@ def apply(state: Session, cmd: Command) -> Session:
         state.decision = adapter.preview(cmd.op)
         state.notice = "SAMPLE fixture preview; edits and priority do not affect this preview"
     elif cmd.op == "arbitration":
+        if "G4" not in state.snapshot.guests:
+            raise ValueError("D3 right of way needs the drone (G4) aboard; none is installed here")
         state.decision = arbitration.decide(
             context.ship,
             context.manifests,
