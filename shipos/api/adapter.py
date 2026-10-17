@@ -21,7 +21,12 @@ from shipos.validation import guest_errors
 
 FIXTURES = REPO_DIR / "tests" / "fixtures"
 CALLBACK = "shipos.api.admission-events/v1"
-HORIZON_S = 720
+HORIZON_S = 720  # observation: the Scenario B baseline timeline ends at its t=720 s trip
+# Execution runs past the baseline so a chosen plan can complete: in Scenario B the battery
+# report at t=480 anchors a landing deadline at t=1200 s and, with 14 crew, preparation is
+# ready at t=840, recovery starts on an operator confirmation at 841 and ends at 1021
+# (docs/SIM_EXECUTION.md). 1800 s keeps that deadline plus ten minutes of follow-on activity.
+EXECUTION_HORIZON_S = 1800
 MAX_TICKS = 120
 
 
@@ -270,14 +275,19 @@ class Simulation:
                 ]
         return result
 
+    @property
+    def horizon_s(self):
+        return EXECUTION_HORIZON_S if self.execution else HORIZON_S
+
     def advance(self, ticks=1, inputs=()):
         if not 1 <= ticks <= MAX_TICKS:
             raise ValueError(
-                f"Use 1ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ{MAX_TICKS} ticks per command"
+                f"Use 1-{MAX_TICKS} ticks per command"
             )
-        if self.runner.next_t_s + ticks - 1 > HORIZON_S:
+        if self.runner.next_t_s + ticks - 1 > self.horizon_s:
             raise ValueError(
-                "Demo horizon ends at 720 s; operational prerequisites are unavailable"
+                f"The {'execution' if self.execution else 'observation'} run ends at "
+                f"{self.horizon_s} s; start a fresh run to continue"
             )
         before = len(self.runner.jsonl.splitlines())
         events = [

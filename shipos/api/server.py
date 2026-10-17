@@ -307,7 +307,7 @@ def view(state: Session) -> dict:
         "replay": state.replay,
         "next_t_s": state.simulation.runner.next_t_s,
         "final_hash": state.simulation.runner.final_hash,
-        "horizon_s": adapter.HORIZON_S,
+        "horizon_s": state.simulation.horizon_s,
         "state_request_time_base": "absolute_simulation_seconds",
         "execution": state.simulation.execution_view(),
         "crew_policy": state.simulation.crew_view(),
