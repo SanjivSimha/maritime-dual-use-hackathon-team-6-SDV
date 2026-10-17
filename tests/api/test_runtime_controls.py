@@ -68,6 +68,7 @@ def runtime_fields(enabled=True):
             "confirmation": "pending",
             "blockers": ["deck_occupied", "confirmation_pending"],
             "requests": [{"variable": "deck", "to": "clear", "start_s": 0, "duration_s": 300}],
+            "request_time_base": "snapshot_relative",
         },
         "environment": {
             "configuration": {
@@ -92,6 +93,7 @@ def runtime_fields(enabled=True):
             "eligibility_only": True,
         },
         "previous_runs": [{"run": 0, "final_hash": HASH}],
+        "state_request_time_base": "absolute_simulation_seconds",
     }
 
 
@@ -159,6 +161,7 @@ def test_mission_status_separates_recommendation_from_execution(page):
     assert f"Losing mission cost: {decision['loser']}" in status
     first = decision["state_requests"][0]
     assert f"{first['variable']} → {first['to']}" in status
+    assert "time basis not reported" in status  # this server does not declare one
     assert "Pending in the simulator: not reported by this server" in status
     assert "Operator confirmation\nNot reported by this server" in status
     assert page.evaluate("state.snapshot.guests.G4.mode") == "flying"  # verdict changed nothing
@@ -220,6 +223,7 @@ def test_runtime_fields_render_in_distinct_rows(page):
     assert "confirmation_pending" in rows["Blocked action and reason"]
     crew = rows["Operator confirmation"]
     assert "Confirmation status: pending" in crew and "permitted by crew policy: no" in crew
+    assert "deck → clear at +0 s from this snapshot for 300 s" in crew
     assert "simulated deck-camera" not in crew  # only labelled for automatic (0-crew) evidence
     page.click("#envAdvanced summary")
     env = page.locator("#environmentView").inner_text()

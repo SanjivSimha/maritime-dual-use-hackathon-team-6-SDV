@@ -259,7 +259,7 @@ function renderMissionStatus() {
   }
 
   const prep = node("div");
-  const requested = (rec?.state_requests ?? []).map(r => `${r.variable} → ${r.to} at +${number(r.start_s)} s for ${number(r.duration_s)} s`);
+  const requested = (rec?.state_requests ?? []).map(r => `${r.variable} → ${r.to} ${requestTime(r.start_s, state.state_request_time_base)} for ${number(r.duration_s)} s`);
   prep.append(node("strong", "Requested by the engine: "), requested.length ? items(requested) : na("none"));
   prep.append(node("strong", "Pending in the simulator: "),
     status ? listOr(status.pending, "none") : na(exec ? "not reported" : "not reported by this server"));
@@ -274,7 +274,7 @@ function renderMissionStatus() {
     if (crew.confirm === "automatic") lines.push("Based on simulated deck-camera evidence (no real camera)");
     if (Array.isArray(crew.blockers) && crew.blockers.length) lines.push(`Blockers: ${crew.blockers.join(", ")}`);
     for (const r of crew.requests ?? []) {
-      lines.push(`Crew request: ${r?.variable ? `${r.variable} → ${r.to} for ${number(r.duration_s)} s` : describe(r)}`);
+      lines.push(`Crew request: ${r?.variable ? `${r.variable} → ${r.to} ${requestTime(r.start_s, crew.request_time_base)} for ${number(r.duration_s)} s` : describe(r)}`);
     }
     row("Operator confirmation", "k-confirm", items(lines));
   } else {
@@ -348,6 +348,13 @@ function placementChanges(d) {
   }).map(([gid, p]) => [gid, p, state.snapshot.guests[gid] ? "moved" : "new"]);
 }
 
+// Request times are rendered on the basis the server declares; never assumed.
+function requestTime(start, base) {
+  if (base === "absolute_simulation_seconds") return `at t = ${number(start)} s`;
+  if (base === "snapshot_relative") return `at +${number(start)} s from this snapshot`;
+  return `starting ${number(start)} s (time basis not reported)`;
+}
+
 function list(title, items, parent) {
   if (!items.length) return;
   parent.append(node("h4", title));
@@ -405,7 +412,7 @@ function renderDecision(d) {
   }
   list("Costs", (d.costs ?? []).map(c => `${c.guest}: ${number(c.amount)} ${c.unit} (${c.what})`), details);
   list("Requested ship state changes", (d.state_requests ?? []).map(r =>
-    `${r.variable} → ${r.to} at +${number(r.start_s)} s for ${number(r.duration_s)} s`), details);
+    `${r.variable} → ${r.to} ${requestTime(r.start_s, state.state_request_time_base)} for ${number(r.duration_s)} s`), details);
   el.append(details);
 
   el.append(node("h4", "Engine explanation"), node("p", d.rationale || "No rationale provided", "rationale"));
