@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
-REPO_URL = "https://github.com/SanjivSimha/maritine-dual-use-hackathon-team-6-SDV"
+REPO_URL = "https://github.com/SanjivSimha/maritime-dual-use-hackathon-team-6-SDV"
 STAGE_PREFIX = ".submission-staging-"
 A4_PT = (595.3, 841.9)
 SIZE_TOLERANCE_PT = 2.0
