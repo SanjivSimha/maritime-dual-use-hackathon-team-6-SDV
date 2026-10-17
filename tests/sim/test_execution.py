@@ -13,6 +13,7 @@ from shipos.data import load_priorities
 from shipos.engine import arbitration, shedding
 from shipos.paths import DATA_DIR
 from shipos.sim.consumption import Profile
+from shipos.sim.deferral import DeferralError
 from shipos.sim.env import EnvironmentUnavailable
 from shipos.sim.env_input import EnvironmentInput
 from shipos.sim.runner import Context, Runner, load_scenario, replay_jsonl
@@ -267,11 +268,37 @@ def overlap():
     return data
 
 
+def observed_decider(seen):
+    def callback(snapshot, events, context):
+        decisions = list(decide(snapshot, events, context))
+        seen.extend(decisions)
+        return decisions
+
+    return callback
+
+
+def step_real_d4_or_verify_missing_metadata(sim, seen):
+    before = state(sim)
+    try:
+        sim.step([event(sim, "genset_trip", gensets_online=1)])
+    except DeferralError:
+        # The standalone B branch intentionally does not import Track A PR #43.
+        # Its old producer must fail closed, never synthesize exact metadata here.
+        action = seen[-1].chosen.actions[0]
+        assert action.kind == "defer"
+        assert not {"schedule_index", "from_t_s", "to_t_s"} <= action.facts.keys()
+        assert state(sim) == before
+        return False
+    return True
+
+
 @pytest.mark.parametrize("priority", ["survey_primary", "sar_primary"])
 def test_real_d4_offsets_and_deferral_target_the_correct_suffix(priority):
-    sim = runner(overlap(), priority=priority)
+    seen = []
+    sim = runner(overlap(), priority=priority, callback=observed_decider(seen))
     original = sim.snapshot.guests["G3"].schedule
-    sim.step([event(sim, "genset_trip", gensets_online=1)])
+    if not step_real_d4_or_verify_missing_metadata(sim, seen):
+        return
     decision = record(sim)["decisions"][0]
     assert decision["chosen"]["feasible"]
     action = decision["chosen"]["actions"][0]
@@ -286,7 +313,7 @@ def test_real_d4_offsets_and_deferral_target_the_correct_suffix(priority):
         delayed = sim.snapshot.guests["G3"].schedule
         assert delayed[0] == original[0]  # earlier unrelated entry untouched
         assert [s.t_s for s in delayed[1:]] == [
-            s.t_s + action["delay_min"] * 60 for s in original[1:]
+            s.t_s + action["facts"]["to_t_s"] - action["facts"]["from_t_s"] for s in original[1:]
         ]
     assert replay_jsonl(sim.jsonl, decide=decide).jsonl == sim.jsonl
 
@@ -308,8 +335,10 @@ def test_unknown_or_ambiguous_semantics_queue_nothing():
     sim = runner(
         data, callback=controlled(Action(guest="G3", kind="defer", to_mode="charging", delay_min=5))
     )
-    sim.step()
-    assert "unique future" in sim.execution_status["blocked"][0]["reason"]
+    before = state(sim)
+    with pytest.raises(DeferralError, match="exact.*metadata"):
+        sim.step()
+    assert state(sim) == before
 
 
 @pytest.mark.parametrize("protected", [True, False])
@@ -539,14 +568,17 @@ def test_real_d4_deferral_of_generated_boundary_survives_original_duration():
     data["ship"].update(speed_kn=4, course="steady", noise="normal")
     data["guests"]["G3"]["mode"] = "recovering"
     data["guests"]["G4"]["mode"] = "charging"
-    sim = runner(data, priority="sar_primary")
-    sim.step([event(sim, "genset_trip", gensets_online=1)])
+    seen = []
+    sim = runner(data, priority="sar_primary", callback=observed_decider(seen))
+    if not step_real_d4_or_verify_missing_metadata(sim, seen):
+        return
     action = record(sim)["decisions"][0]["chosen"]["actions"][0]
     assert action["kind"] == "defer" and action["guest"] == "G3"
     original_due = sim.snapshot.guests["G3"].schedule[0].t_s
     sim.run(int(action["t_offset_s"]))
     delayed_due = sim.snapshot.guests["G3"].schedule[0].t_s
-    assert delayed_due == original_due + action["delay_min"] * 60
+    assert delayed_due == action["facts"]["to_t_s"]
+    assert original_due == action["facts"]["from_t_s"]
     sim.run(int(original_due) + 1 - sim.next_t_s)
     assert sim.snapshot.guests["G3"].mode == "recovering"
     sim.run(int(delayed_due) + 1 - sim.next_t_s)

@@ -18,6 +18,8 @@ from shipos.crew import (
     observe,
 )
 from shipos.engine.arbitration import deadline_min
+from shipos.sim.deferral import DeferralError, apply_deferral, capture_deferral
+from shipos.sim.resume import ResumeApproval, manifest_hash
 from shipos.statemachine import conflicts, plan_transition
 
 
@@ -47,6 +49,7 @@ class Execution:
     done: dict[int, float] = field(default_factory=dict)
     boundaries: set[tuple] = field(default_factory=set)
     generated: dict = field(default_factory=dict)
+    _resume_approvals: dict[int, ResumeApproval] = field(default_factory=dict)
     sequence: int = 0
     status: dict = field(default_factory=dict)
 
@@ -83,6 +86,11 @@ class Execution:
             "generated_schedule": deepcopy(self.generated),
             "crew_evidence": asdict(self.evidence),
         }
+        if self._resume_approvals:
+            self.status["resume_approvals"] = {
+                str(task_id): approval.record()
+                for task_id, approval in sorted(self._resume_approvals.items())
+            }
         return snap
 
     def event(self, event, data, context):
@@ -211,6 +219,8 @@ class Execution:
             trial = deepcopy(self)
             try:
                 trial.compile(decision, data, context)
+            except DeferralError:
+                raise  # Metadata rejection rolls back the whole Runner tick.
             except (ValueError, KeyError) as exc:
                 self.block("ambiguous_plan", subject=decision.subject, reason=str(exc))
             else:
@@ -242,7 +252,12 @@ class Execution:
                 raise ValueError("degraded-only action in an undegraded state")
             seconds(action.t_offset_s)
             if action.to_mode is not None:
-                context.manifests[gid].mode(action.to_mode)
+                try:
+                    context.manifests[gid].mode(action.to_mode)
+                except KeyError as exc:
+                    if action.kind == "defer":
+                        raise DeferralError("DEFER target mode is not declared") from exc
+                    raise
             if action.kind in ("pause", "suspend"):
                 rt = data["guests"][gid]
                 activity = context.manifests[gid].activity(rt["activity"])
@@ -280,22 +295,12 @@ class Execution:
                         "D3 delay_min includes transition/approach; deferred start is unspecified"
                     )
                 schedule = data["guests"][gid]["schedule"]
-                entries = [
-                    i
-                    for i, e in enumerate(schedule)
-                    if e["mode"] == action.to_mode and e["t_s"] > now
-                ]
-                if len(entries) != 1:
-                    raise ValueError(
-                        f"{gid}: defer requires a unique future {action.to_mode!r} entry"
-                    )
-                index = entries[0]
-                if not context.manifests[gid].mode(action.to_mode).deferrable:
-                    raise ValueError("target mode is not deferrable")
-                delay = seconds(action.delay_min * 60)
-                if not delay:
-                    raise ValueError("defer delay must be positive")
-                details = {"suffix": deepcopy(schedule[index:]), "delay_s": delay}
+                if (
+                    action.to_mode is None
+                    or not context.manifests[gid].mode(action.to_mode).deferrable
+                ):
+                    raise DeferralError("DEFER target mode is missing or not deferrable")
+                details = capture_deferral(action, schedule, due)
             if action.kind in ("pause", "suspend"):
                 p = pauses[gid]
                 rt = data["guests"][gid]
@@ -396,7 +401,19 @@ class Execution:
             return "active shedding cap blocks higher-power mode"
         return None
 
-    def prepare(self, gid, mode, activity, data, context, *, source, elapsed=0, retry=False):
+    def prepare(
+        self,
+        gid,
+        mode,
+        activity,
+        data,
+        context,
+        *,
+        source,
+        elapsed=0,
+        retry=False,
+        parent_resume_task=None,
+    ):
         snap = WorldSnapshot.model_validate(data)
         wanted = context.manifests[gid].mode(mode)
         result = plan_transition(
@@ -432,7 +449,7 @@ class Execution:
             for s in result.steps
         ]
         ids = self.requests(requests, data, plan=self.sequence)
-        self.add(
+        mode_task = self.add(
             "mode",
             snap.t_s + result.ready_s,
             deps=ids,
@@ -442,6 +459,8 @@ class Execution:
             elapsed_s=elapsed,
             source=source,
         )
+        if parent_resume_task in self._resume_approvals:
+            self._resume_approvals[mode_task] = self._resume_approvals[parent_resume_task]
 
     def advance(self, data, context, entered, transitions):
         now = data["t_s"]
@@ -549,6 +568,7 @@ class Execution:
                 self.block(reason, task=task["id"])
                 continue
             self.pending.remove(task)
+            self._resume_approvals.pop(task["id"], None)
             self.done[task["id"]] = now
             self.applied.append({"task": task["id"], "kind": task["kind"], "t_s": now})
         # Explicit battery forecasts only: never extrapolate a fresh forecast each tick.
@@ -704,6 +724,13 @@ class Execution:
             self.observe(data, context)
             return None
         if task["kind"] in ("resume", "prepare"):
+            approval = self._resume_approvals.get(task["id"])
+            if task["kind"] == "resume" and approval is None:
+                return "unapproved_resume_task"
+            if approval is not None:
+                reason = approval.blocker(task, data, context.manifests[task["guest"]], entered)
+                if reason:
+                    return reason
             return self.prepare(
                 task["guest"],
                 task["mode"],
@@ -713,12 +740,22 @@ class Execution:
                 source=task.get("source", "declared_resume"),
                 elapsed=task["elapsed_s"],
                 retry=True,
+                parent_resume_task=task["id"] if approval is not None else None,
             )
         if task["kind"] == "mode":
             gid, mode = task["guest"], task["mode"]
             rt = data["guests"][gid]
             active = context.manifests[gid].mode(rt["mode"])
-            if gid in self.protected and task["source"] != "declared_continuation":
+            approval = self._resume_approvals.get(task["id"])
+            if approval is not None:
+                reason = approval.blocker(task, data, context.manifests[gid], entered)
+                if reason:
+                    return reason
+            if (
+                gid in self.protected
+                and task["source"] != "declared_continuation"
+                and approval is None
+            ):
                 return "protected_winner"
             if (
                 not active.interruptible
@@ -759,6 +796,9 @@ class Execution:
             return None
         if action.kind == "proceed" and rt["mode"] == action.to_mode:
             return None  # Incumbent proceeds; preserve its original activity clock.
+        replacement = None
+        if action.kind == "defer":
+            replacement = apply_deferral(task, rt["schedule"], now)
         if gid in self.protected and action.kind != "proceed":
             return "protected_winner"
         if not manifest.mode(rt["mode"]).interruptible:
@@ -766,14 +806,17 @@ class Execution:
         if manifest.safety_critical and task["decision_kind"] == "shedding":
             return "safety_critical_requires_separate_authority"
         if action.kind == "defer":
-            suffix = task["suffix"]
             schedule = rt["schedule"]
-            if not suffix or suffix[0]["t_s"] <= now or schedule[-len(suffix) :] != suffix:
-                return "deferred_schedule_changed_replan_required"
-            schedule[-len(suffix) :] = [{**e, "t_s": e["t_s"] + task["delay_s"]} for e in suffix]
+            suffix = task["planned_schedule"][task["schedule_index"] :]
             projected = self.generated.get(gid)
+            projected_entry = None
             if projected and projected["entry"] in suffix:
-                projected["entry"]["t_s"] += task["delay_s"]
+                index = suffix.index(projected["entry"])
+                projected_entry = deepcopy(task["shifted_suffix"][index])
+            # Every check and replacement is complete before mutating either container.
+            schedule[:] = replacement
+            if projected_entry is not None:
+                projected["entry"] = projected_entry
             return None
         activity = None
         if action.kind == "proceed":
@@ -789,13 +832,24 @@ class Execution:
             return reason
         if action.kind in ("pause", "suspend"):
             original = manifest.activity(task["resume_activity"])
-            self.add(
+            resume_task = self.add(
                 "resume",
                 task["resume_s"],
                 guest=gid,
                 mode=original.mode,
                 activity=original.name,
                 elapsed_s=task["elapsed_s"],
+            )
+            self._resume_approvals[resume_task] = ResumeApproval(
+                origin_task=task["id"],
+                guest=gid,
+                activity=original.name,
+                mode=original.mode,
+                hold_mode=action.to_mode,
+                hold_entered_s=now,
+                not_before_s=task["resume_s"],
+                elapsed_s=task["elapsed_s"],
+                manifest_sha256=manifest_hash(manifest),
             )
         if action.kind in ("throttle", "standby", "shed"):
             self.caps[gid] = {
