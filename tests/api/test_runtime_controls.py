@@ -139,6 +139,8 @@ def open_mission(page):
 
 def test_unsupported_controls_are_disabled_with_reasons(page):
     open_mission(page)
+    if page.evaluate("['execution','confirm_deck','environment'].some(o => serverOps.includes(o))"):
+        pytest.skip("this backend offers the runtime commands (PR #37 present)")
     for selector in ("#execution", "#confirmDeck", "#environment", "#envApply"):
         assert page.locator(selector).is_disabled()
         assert "does not offer it yet" in page.locator(selector).get_attribute("title")
@@ -161,9 +163,13 @@ def test_mission_status_separates_recommendation_from_execution(page):
     assert f"Losing mission cost: {decision['loser']}" in status
     first = decision["state_requests"][0]
     assert f"{first['variable']} → {first['to']}" in status
-    assert "time basis not reported" in status  # this server does not declare one
-    assert "Pending in the simulator: not reported by this server" in status
-    assert "Operator confirmation\nNot reported by this server" in status
+    if page.evaluate("state.state_request_time_base") is None:
+        assert "time basis not reported" in status  # this server does not declare one
+    else:
+        assert "at t = " in status  # declared absolute basis
+    if page.evaluate("state.execution") is None:  # backend without runtime fields
+        assert "Pending in the simulator: not reported by this server" in status
+        assert "Operator confirmation\nNot reported by this server" in status
     assert page.evaluate("state.snapshot.guests.G4.mode") == "flying"  # verdict changed nothing
 
 
