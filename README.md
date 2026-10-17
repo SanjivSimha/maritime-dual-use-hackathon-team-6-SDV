@@ -1,105 +1,107 @@
-# ShipOS: resource governor for a software-defined vessel
+# ShipOS: explainable vessel resource governance
 
-Maritime Dual-Use Hackathon 2026, team 6 (Fincantieri challenge). A re-configurable 60–70 m
-vessel carries swappable mission equipment ("guests" G1–G5 from Annex B) that compete for eight
-finite ship resources: power, heat rejection, deck slots, mast positions, mass/stability, data
-links, compute and response time. ShipOS sits between the platform and those guests. It decides
-whether a new card can be admitted, where it goes, and which numbered limit binds, and every
-decision is deterministic and replayable. The prototype is civil-use, offline and uses no ML in
-the decision path.
+Maritime Dual-Use Hackathon 2026, team 6, Fincantieri challenge. ShipOS evaluates
+machine-readable equipment cards against eight finite budgets: power, heat, deck,
+mast, mass/stability, data links, compute and response time. It is a civil-use,
+offline prototype with deterministic decisions and no ML in the decision path.
+This submission describes merged baseline `fcd8c58` (PR #46), not full challenge completion.
 
-## Run it (Windows PowerShell, from any directory)
+## Prepare once; launch offline
+
+From the repository root in Windows PowerShell, install Python 3.11+ and uv while
+online (`py -m pip install --user uv` if needed), then:
 
 ```powershell
-# one-time, online: needs Python 3.11+ and uv (e.g. py -m pip install --user uv)
 .\tools\demo.ps1 -Prepare
-
-# every launch, offline: http://127.0.0.1:8000/  (Ctrl+C stops it)
 .\tools\demo.ps1
-.\tools\demo.ps1 -Port 8765 -OpenBrowser
 ```
 
-The launcher uses an existing uv (`uv` on PATH, `py -m uv`, or `.tools\uv.exe`) with
-`uv run --locked --offline`. It binds to 127.0.0.1 and runs in the foreground. It never downloads,
-upgrades or edits files, and it reports a missing uv, a cold dependency cache or a busy port
-rather than working around them. If script execution is disabled, use
-`powershell -NoProfile -ExecutionPolicy Bypass -File tools\demo.ps1`; that flag applies to that
-one process only. Other platforms: `uv sync --locked`, then
-`uv run --locked --offline python -m uvicorn shipos.api.server:app --host 127.0.0.1 --ws websockets-sansio`.
-Checks: `make check`, or the commands in [CLAUDE.md](CLAUDE.md).
+Open http://127.0.0.1:8000/; Ctrl+C stops the foreground server. Preparation runs
+`uv sync --locked`; offline launch uses the populated uv cache and local assets.
+No CDN or frontend build is required. The launcher finds uv on PATH, `py -m uv`,
+or an existing `.tools/uv.exe`. It does not install uv. A cold cache or busy port
+is an error; choose `-Port 8765` for another port. Invoke the script by its path
+if outside the repository. If local script policy prevents running it, use the
+manual server command below after preparation:
 
-## Architecture
-
-```
-data/ ship (Annex A) · guests G1–G5 · priorities · envelopes · scenarios · assumptions · env_cache
-   │  shipos/data.py: YAML → frozen pydantic contracts ("$id" → assumption registry)
-   ▼
-shipos/sim  Runner: seeded 1 Hz snapshots + timeline events ──► engine callback
-   │                                                              │ D1 admission / D2 placement
-   │                                                              │ D3 / D4: NotImplementedError
-   ▼                                                              ▼
-hash-chained JSONL log ◄─────── Decisions (recorded, never applied to the ship)
-   │
-shipos/api  FastAPI + WebSocket, in-memory sessions ──► local HTML/JS/SVG dashboard
-side libraries: shipos/physics (8 budgets) · statemachine (A.6 transitions) · crew (D5) · sim/env
+```powershell
+uv run --locked --offline python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8000 --ws websockets-sansio
 ```
 
-## Decisions
+Use one worker. Sessions and archived runs are in memory; export before stopping.
+The locked WebSocket backend is included. No real vessel or camera is connected.
 
-| | Component | Declared objective | Status at this checkpoint |
-|---|---|---|---|
-| D1 admission | `engine/admission.py` | Feasible in every envelope corner; otherwise the cheapest yes-if set by Σ priority weight × capability lost | **Demonstrated** in the UI: catalogue edits and complete judge-card import |
-| D2 placement | `engine/placement.py` | Maximise the minimum normalised margin, then future flexibility, then preferred slots; report rejected alternatives | **Demonstrated** with D1 |
-| D3 right of way | `engine/arbitration.py` | Utility under the priority file, with deadline filter | **Available** from main: runs on a battery report and on demand (needs G4 aboard, so Scenario B only) |
-| D4 degradation | `engine/shedding.py` | Throttle → standby → shed by capability lost | **Available** from main: runs on a generator trip and on demand |
-| D5 crew policy | `shipos/crew/policy.py` | Deck clear and confirmed before recovery; winch lock | **Standalone** library plus [evidence-lifecycle helper](docs/CREW_LIFECYCLE.md); not called by the API or Runner; [memo](docs/scenario_C_memo.md), [policy](docs/CREW_POLICY.md) |
-| D6 Physical Account | `tools/physical_account.py` | Every number traced to Annex or a reasoned assumption | **Available**: [account](docs/PHYSICAL_ACCOUNT.md), [registry](docs/PHYSICAL_ACCOUNT_REGISTRY.md) |
+## Demo order: Scenario B, then Scenario A
 
-The brief makes D1 and D3 mandatory. **D3 is still missing.**
+**B: contention, preparation, explicit permission.** Select LIVE, Scenario B,
+14 crew and survey priority; enable simulated execution (an explicit fresh run).
+Step/fast-forward, at most 120 ticks per command. The first step emits t=0.
+The baseline battery report at t=480 invokes real D3. G3 is paused under survey
+priority or suspended under SAR; G4 recovery wins. At t=840 preparation is ready,
+but G4 remains flying until the operator records deck-clear confirmation. Confirm
+at the next tick, t=841: G4 enters recovery. At t=1021 its declared continuation
+enters launching, then flying, **not charging**. Repeat under the other priority;
+6/0 crew on the baseline occupied deck produce denial/blockers, not a landing.
 
-## What the demo actually does
+The t=720 generator trip invokes D4 but does not itself cause an overload. In the
+observation baseline the nominal draw is 49.5 kW, below the 100 kW one-genset
+reserve. Synthetic charging-overlap tests are separate from baseline B. Execution
+is bounded to 1800 simulated seconds; observation to 720. Neither is a latency claim.
 
-- **Scenario A:** real D1/D2 on a proposed card. Editing a number reruns admission. Some edits
-  change the verdict or the binding constraint, and many don't. Example: G4 at its declared
-  0.9 t gives `yes_if`; set to 20 t it gives `no`, binding on hangar mass. Survey, SAR and
-  patrol priorities and crew changes are injected as events and rerun admission.
-- **Judge cards:** a complete card JSON with an unfamiliar ID and any edited field
-  (`import_card`) goes through contract and reference validation, then real admission. Invalid
-  cards are rejected without changing the session, and replay uses the embedded card.
-- **Scenario B:** the simulator steps at 1 Hz. The battery report (minute 8) and generator trip
-  (minute 12) update the snapshot, and you can inject them yourself. The battery report runs
-  real D3 (G4 recovery goes before G3's survey leg) and the trip runs real D4, which answers
-  `no_action` because the 49.5 kW draw fits. No overload is invented, and no action is applied.
-- **Execution replay:** the session log is re-executed and must match byte for byte. You can
-  export it as a JSON bundle or canonical JSONL.
+**A: unfamiliar equipment and a changed number.** Reset restores observation-mode
+LIVE A, baseline inputs and seed. Select G4: evaluating its declared 0.9 t body mass
+returns `yes_if`; 20 t returns `no`, binding on hangar mass. Open the complete-card
+JSON editor, load G4, change `id` to `JUDGE_DRONE` and its charging-mode `power_kw`
+to 41, then validate/evaluate. Real admission receives the complete card. Proposed
+cards remain separate from installed guests; admission never installs equipment.
+Malformed/nonfinite input or an installed-ID collision is rejected transactionally.
+Not every numeric edit changes a verdict. Export evidence and verify replay.
 
-Interaction details and the API are in [shipos/api/README.md](shipos/api/README.md). An earlier
-combined checkpoint (PR #25) is recorded in [docs/INTEGRATION_VERIFICATION.md](docs/INTEGRATION_VERIFICATION.md).
+## Architecture and current evidence
 
-## Limitations
+YAML/cards and assumptions -> frozen contracts -> 1 Hz seeded Runner -> pure
+D1-D4 engine callback -> optional execution controller -> updated snapshot and
+hash-chained JSONL -> FastAPI/WebSocket -> local JS/CSS/SVG illustrated dashboard.
 
-- D3 and D4 results are recommendations: nothing applies them to the simulated ship, and their
-  integration has only been checked on the Scenario B timeline.
-- Decisions are recorded but never applied to the simulated ship.
-- The crew policy and its lifecycle helper are libraries the API and Runner don't call yet.
-  Deck "camera" evidence is simulated.
-- The cached environment ([ENVIRONMENT.md](docs/ENVIRONMENT.md)) is an explicit Runner opt-in
-  (`EnvironmentInput`, captured into replay). API sessions and the UI don't use it.
-- Physics is a simplified steady-state model: power is the guest reserve, heat is 1:1 for
-  water-cooled guests, and stability is a mass × mounting proxy rather than hydrostatics. See
-  the Physical Account.
-- Sessions live in memory: one server worker, and a restart loses them.
-- Replay needs this checkout's code, assumption registry and a compatible Python. It is not a
-  portable artifact.
-- No measured latency figures, no certification, no ship trials.
+| Component | Merged behavior and evidence boundary |
+|---|---|
+| D1 admission / D2 placement | Real engine, envelope checks, placement and rationale; API tests cover edits, unfamiliar cards and rollback. |
+| D3 arbitration / D4 degradation | Real engines. Observation records recommendations; opt-in execution schedules supported chosen feasible actions. Ambiguous/unsupported semantics remain blocked. |
+| D5 crew | Policy and evidence lifecycle are called by API/controller. Human confirmation is received input, never inferred from a planner requirement. Zero-crew evidence is simulated. |
+| Environment | UI/API opt-in selects an allowlisted cached source with provenance, scenario start, layering and fixed timezone offset. Windows mean eligibility, not permission; no runtime fetch. |
+| D6 Physical Account | [One-page account](docs/PHYSICAL_ACCOUNT.pdf) with registry appendix; [editable source](docs/PHYSICAL_ACCOUNT.md). |
 
-## Another week
+The merged [API acceptance tests](tests/api/test_execution_acceptance.py) exercise
+real D3, applied recovery, survey/SAR, crew 14/6/0, captured weather and byte-identical
+execution replay. [Simulator tests](tests/sim/) include synthetic contract-edge
+and protected-resume cases. Local-Chrome tests cover UI controls and ship rendering;
+some control tests substitute responses and prove rendering only. Test success is
+not evidence of real hardware operation, universal mission success or certification.
 
-Implement D3 and D4 against the Scenario B timeline and the priority files, then apply chosen
-actions in the simulator. Wire `recovery_gate` with its evidence lifecycle, and the captured
-environment, into API sessions and the UI. Add the team's own G6 card once the G1–G5 count tests
-are generalised. Add golden end-to-end tests for Scenarios A and B and a "jury changes one
-number" sweep.
+## Export, replay and limits
 
-Plan and arithmetic: [docs/PLAN.md](docs/PLAN.md). Adding cards: [docs/ADDING_A_CARD.md](docs/ADDING_A_CARD.md).
-Contributor rules: [CLAUDE.md](CLAUDE.md).
+Download the JSON evidence bundle and canonical JSONL; retain the final hash
+separately. Verify by replaying re-executes actual records, not just the hash chain.
+The bundle captures ship, manifests, priorities, timeline, seed, profiles, execution
+configuration, environment and admission envelope, including imported cards and
+operator inputs. Replay still needs compatible callback/engine/controller code,
+assumption registry and Python/runtime; it is not an independently portable executable.
+Execution/environment changes archive the prior run; Reset archives then restores A.
+Export before scenario/mode changes, which start fresh runs.
+
+Exact D4 deferral metadata producer [#43](https://github.com/SanjivSimha/maritime-dual-use-hackathon-team-6-SDV/pull/43)
+is separate from this baseline; missing exact facts fail closed. Ambiguous D3
+deferrals remain blocked. Winner-protection lifetime is provisional and can retain
+protection indefinitely. G6 is absent. Stability, weather mapping and transitions
+are engineering proxies, and deck evidence is simulated. No ship trials, mentor
+validation or measured decision-latency compliance is claimed here. Performance
+measurement is a separate workstream. The proposed extra 40 kW of warm-water cooling
+is an engineering proposal, not an optimised or measured result.
+
+Required artifacts and open submission items: [checklist](docs/SUBMISSION_CHECKLIST.md).
+[Scenario C memo PDF](docs/scenario_C_memo.pdf) and [source](docs/scenario_C_memo.md).
+[Card guide](docs/ADDING_A_CARD.md), [execution semantics](docs/SIM_EXECUTION.md),
+[environment](docs/ENVIRONMENT.md), [contracts](CONTRACT.md), [contributor checks](CLAUDE.md).
+Some older integration documents describe historical checkpoints; use this baseline
+and current code for implementation status. AI-assisted development is disclosed in
+PR history; the final submission must retain the organisers' required disclosure.

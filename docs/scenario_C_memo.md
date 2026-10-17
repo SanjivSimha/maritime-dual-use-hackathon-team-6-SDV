@@ -1,112 +1,100 @@
-# Operational Policy Memo: Flight Deck Recovery and Deck Machinery Gate
+# Scenario C: crew authorization for flight-deck recovery
 
-**To:** ShipOS Systems Engineering and Mission Operations  
-**From:** agy (Noncoding Task Coordinator)  
-**Subject:** D5 Crew Policy Specification, Timing Calculations, and Interface Boundaries  
-**Status:** Operational Specification (Audited at PR #19 Commit `abfe471`)
+**To:** ShipOS systems engineering and mission operations
 
----
+**From:** Team 6, ShipOS
 
-## 1. Operational Principles and Scope
+**Basis:** merged `fcd8c58` (PR #46); simulated prototype, 17 October 2026.
 
-ShipOS specifies two deterministic crew-safety invariants across flight operations and deck equipment:
+## Operational rule and authority
 
-1. **Flight Deck Recovery Rule:** The flight deck must be physically clear and explicitly confirmed before initiating VTOL drone recovery.
-2. **Deck Machinery Interlock Rule:** Modes operating deck machinery (hangar doors, stern winches) are strictly locked whenever any concurrent active mode prohibits deck machinery.
+The flight deck must be clear and confirmed before recovery starts. Deck machinery
+must not run while an active mode prohibits it. `shipos/crew/policy.py` evaluates
+these rules without actuation; `crew/lifecycle.py` retains per-session evidence.
+The opt-in simulator controller calls these libraries and the public transition
+planner, then applies only supported chosen engine actions. The API exposes actual
+gates, pending/applied/blocked tasks and recorded operator confirmation. Observation
+mode remains available and never applies recommendations to the simulated ship.
 
-The crew policy module (`shipos/crew/policy.py`, audited at PR #19 `abfe471`) implements these rules as pure, deterministic evaluative functions over frozen contract objects (`ShipSpec`, `WorldSnapshot`, `GuestManifest`). The functions evaluate gates and interlocks without mutating inputs, reading wall clocks, or actuating vessel equipment. Integrated runtime callers (the simulation runner and API server) do not yet enforce these gates automatically during live stepping.
+A planner's `confirm="human"` is a requirement, not permission received. At 14 or
+6 crew, recovery remains blocked until a valid explicit operator input is recorded.
+The command does not clear an occupied deck. Preparation must finish, and the gate
+is checked again when the operation starts. Occupation or a crew change invalidates
+confirmation; a later clear-deck episode requires fresh authorization. Fast-forward
+never invents a human token. All times below are simulated seconds or planning bounds.
 
----
+## Crew complements and fail-closed behavior
 
-## 2. Recovery Gate Policy Across Crew Complements
+| Crew | Deck preparation / evidence | Recovery authorization |
+|---|---|---|
+| 14 | Upper-bound deck clear 300 s, then human confirmation preparation 60 s. | Actual human confirmation required; occupied or unconfirmed deck blocks. |
+| 6 | Upper-bound deck clear 720 s, then confirmation preparation 180 s. Early forecast needed. | Actual human confirmation required; late preparation cannot be labelled a successful landing. |
+| 0 | No crew to clear an occupied deck. A clear deck requires fresh, same-tick simulated evidence. | Automatic only when the actual policy gate permits; missing/stale/obstructed evidence blocks. |
 
-Recovery feasibility depends directly on the vessel complement mapped through Annex A / A.6 declared crew levels (`14`, `6`, or `0` crew):
+Zero-crew controller evidence is derived from simulated deck state and explicitly
+labelled `simulated_deck_state`; library tests also use labelled simulated camera
+inputs. There is no camera hardware integration, remote watchkeeper or certified
+autonomous deck verification. A denial reports engine risk/outcome; no invented
+diversion site, ditch completion or successful landing is fabricated.
 
-| Crew Complement | Flight Deck Occupied | Flight Deck Clear (Unconfirmed) | Flight Deck Clear (Confirmed / Verified) | Evaluated Gate Status |
-|---|---|---|---|---|
-| **14 Crew** | Blocked (`deck_occupied`, `confirmation_pending`) | Blocked (`confirmation_pending`) | **Permitted** (`confirmation="received"`) | Fails closed; requires human confirmation |
-| **6 Crew** | Blocked (`deck_occupied`, `confirmation_pending`) | Blocked (`confirmation_pending`) | **Permitted** (`confirmation="received"`) | Fails closed; requires early pre-clearance |
-| **0 Crew (Uncrewed)** | Blocked (`no_crew_to_clear_deck`) | Blocked (`no_deck_evidence` or `stale_deck_evidence`) | **Permitted** (`confirmation="automatic"` via simulated sensor) | Fails closed (`forbidden`); no diversion invented |
+## Six-crew forecast requirement
 
-### Required vs. Received Human Confirmation
-The policy maintains a strict architectural distinction between *required* and *received* confirmation:
-- `confirm = "human"` indicates that the operational state *demands* human sign-off (passed through to the Track A transition planner).
-- `confirmation = "received"` indicates that an explicit, valid human report has actually been provided at or before the snapshot timestamp.
-Generating a feasible transition plan requiring human confirmation does **not** grant permission to execute recovery. Evaluated recovery remains blocked (`permitted = False`) until `confirmation="received"`.
+Using declared upper bounds and the G4 assumed 180 s approach:
 
----
+| Crew | Deck plus confirmation lead | Including approach |
+|---|---|---|
+| 14 | 300 + 60 = 360 s (6 min) | 540 s (9 min) |
+| 6 | 720 + 180 = 900 s (15 min) | 1080 s (18 min) |
 
-## 3. Six-Crew Early Clearance, Weather, and Landing Timing Calculations
+The declared critical-battery landing window is 720 s (12 min). At 6 crew, reacting
+only to the critical alert is too late under these bounds. For a forecast deadline
+at t=1200, `start_by = 1200 - 180 - 900 = 120`: begin by minute 2. This is a planning
+calculation, not a demonstrated physical flight. Speed/course/noise settle concurrently
+where the planner permits; acoustic hold completion precedes manoeuvres. Durations
+must not all be added indiscriminately to the critical path.
 
-### Declared Timing Parameters (Annex A Upper Bounds & Manifest Assumptions)
-- **Course Settle:** 60–180 s (A.6 upper bound: 180 s).
-- **Speed Band Adjustment:** 120–300 s (A.6 upper bound: 300 s).
-- **G4 Landing Approach:** 3 min (180 s; assumption `guests.g4.landing_approach_min`).
-- **G4 Battery Thresholds:** Critical at 20%; declared landing window is 12 min (`Battery.land_within_min`).
-- **Deck Preparation & Confirmation:**
-  - **14 Crew:** Deck clear upper bound = 300 s (5 min); confirmation upper bound = 60 s (1 min). Total lead = 360 s (6 min). Total calculated time to touchdown = 540 s (9 min).
-  - **6 Crew:** Deck clear upper bound = 720 s (12 min); confirmation upper bound = 180 s (3 min). Total lead = 900 s (15 min). Total calculated time to touchdown = 1080 s (18 min).
+`early_clearance()` rejects missing, future-dated or nonfinite forecasts and blocks
+weather outside card recovery limits. A late result requests immediate preparation
+but is an operational warning, not proof of arrival. The controller accepts explicit
+recorded `battery_forecast` events through its public Runner seam; the dashboard
+battery-report control is not a forecast or an automatic prediction service.
 
-### The Six-Crew Pre-Clearance Requirement
-With 6 crew aboard, deck preparation and confirmation require 15 minutes on upper bounds. Adding the 3-minute final approach, total clearance lead is 18 minutes. 
+## Machinery interlock and runtime evidence
 
-Because the G4 emergency landing window after a critical battery report is 12 minutes, initiating deck clearance *only after* a critical battery alert cannot clear the deck in time under upper-bound calculations:
-$$\text{Elapsed to Touchdown} = 900\,\text{s} + 180\,\text{s} = 1080\,\text{s}\;(18\,\text{min}) > 720\,\text{s}\;(12\,\text{min})$$
+Interlocks follow declared mode conditions, not hardcoded equipment pairs.
+G3 surveying forbids deck machinery, so G4 recovery/G2 winch preparation must wait
+for the conflicting state to change. A chosen pause/suspend uses the real declared
+hold and acoustic-delivery prerequisites; the controller cannot merely label a
+running machine off. Physical feasibility remains owned by the existing planner/engine.
 
-`early_clearance()` evaluates the required start time:
-$$\text{start\_by\_s} = \text{forecast.land\_by\_s} - \text{approach\_s} - \text{lead\_s}$$
+Merged API acceptance tests run Scenario B under survey and SAR: at t=480 D3 chooses
+G3 pause/suspend and G4 recovery; hold delivery completes at 540, deck clearing at
+780 and preparation at 840. G4 stays flying until explicit confirmation at 841,
+then recovers; the declared continuation enters launching at 1021 and later flying,
+**not charging**. The 6/0-crew baseline occupied-deck runs return real denial/blockers.
+The tests export captured inputs and re-execute byte-identical records. Library
+unit tests cover early clearance, stale evidence, weather and lifecycle invalidation.
+Browser tests cover controls/rendering, including some controlled responses; they
+are not all proof of full physical mission execution.
 
-For a landing deadline at minute 20 ($t = 1200\,\text{s}$), clearance must start by minute 2 ($t = 120\,\text{s}$).
+## Remaining boundaries and operator procedure
 
-### Weather, Invalid Forecast, and Late Semantics (PR #19 `abfe471`)
-- **Environmental Gating:** `early_clearance()` passes `snapshot.env` to the Track A planner. Wind (> 25 kn) or sea state (> 4) exceeding G4 card limits adds `recovery_state_blocked` and records `planner_blocker`. This suppresses `request` (`False`) and clears `requests` (`()`), while preserving `lead_s` and `start_by_s` as timing references.
-- **Forecast Validation:** Missing or future-dated forecasts return `no_forecast`. Non-finite values (NaN or $\pm\infty$) in `issued_s` or `land_by_s` return `invalid_forecast` with no timing outputs.
-- **Late Evaluation:** `late = True` indicates that preparation starts after `start_by_s` (whether the forecast arrived late or was evaluated after `start_by_s`). Clearance is still requested immediately, but `late` serves as an operational warning, not a definitive missed-deadline verdict.
+Run Scenario B before Scenario A. Choose crew/priority before enabling execution;
+a fresh execution/environment run archives prior evidence. Inspect blockers and
+pending due times, provide confirmation only after the deck is actually clear,
+and export the evidence bundle before restarting the in-memory server. Reset
+archives the current run and restores LIVE A with observation mode and baseline inputs.
+Replay requires compatible code, callback and assumption registry in addition to
+captured inputs; the final hash alone is not execution replay.
 
-*Note: These figures represent upper-bound planning calculations, not demonstrated real-time mission traces.*
+A generator trip does not imply overload. Baseline observation demand at minute 12
+is 49.5 kW. Charging overlaps are separate synthetic inputs. Ambiguous D3 deferrals
+remain blocked; exact D4 metadata producer #43 is not merged in this baseline.
+Winner-protection lifetime is provisional and protection may persist indefinitely;
+the approved internal-resume exception is not a general release policy. G6 is absent.
+Engineering timing/stability/weather proxies and simulated evidence are not certification.
+No mentor validation, ship trials or measured latency compliance is claimed.
 
----
-
-## 4. Zero-Crew Operations: Simulated Evidence and Fail-Closed Behavior
-
-In an uncrewed configuration (0 crew):
-1. **No Physical Deck Clearing:** `deck_clear_s` is `null`. If the deck is occupied, clearing is impossible (`no_crew_to_clear_deck`), and recovery cannot proceed.
-2. **Simulated Sensor Evidence:** Automatic clearance verification requires a `DeckEvidence` reading from the current tick (`evidence.t_s == snapshot.t_s`) with `deck_clear == True`. In this prototype, camera/sensor inputs are strictly **simulated** (`source="simulated_camera"`); no real camera hardware is integrated.
-3. **Fail-Closed Verification:**
-   - Missing evidence $\rightarrow$ blocked (`no_deck_evidence`).
-   - Stale evidence ($t_{\text{evidence}} \ne t_{\text{snapshot}}$) $\rightarrow$ blocked (`stale_deck_evidence`).
-   - Sensor reporting obstruction $\rightarrow$ blocked (`evidence_not_clear`).
-4. **No Speculative Outcomes:** The policy returns `confirm = "forbidden"`. It does not invent emergency diversion airfields, unverified recovery nets, or automated clearing mechanisms. Contractual default remains `Battery.on_deny = "ditch"`.
-
----
-
-## 5. Deck-Machinery Interlock
-
-The `machinery_lock()` function evaluates whether a target guest mode requiring deck machinery (`deck_machinery: true`, such as G4 hangar door operations or G2 oceanographic winch handling) conflicts with active guest modes.
-- Interlocks are derived dynamically from condition conflicts (`deck_machinery_allowed: false`), never hardcoded guest pairs.
-- **Operational Case:** While G3 (underwater vehicle plus shipboard cradle) is active in `surveying`, `deck_machinery_allowed` is `False` to prevent acoustic interference. G4 recovery and G2 winch activation are evaluated as locked (`locked = True`, `by = ("G3.surveying",)`).
-- When G3 transitions to `standby` (where deck machinery is permitted), the lock disengages automatically.
-
----
-
-## 6. Integration Seams and Caller Responsibilities
-
-Because `WorldSnapshot` is frozen and stateless, calling systems (the simulation runner or API orchestration layer) retain explicit operational responsibilities:
-
-1. **Confirmation Lifecycle Management:** A `HumanConfirmation` token applies strictly to a single clear-deck episode. Because the policy is stateless, the caller **must discard** the confirmation token as soon as `snapshot.ship.deck` becomes `DeckState.OCCUPIED`. A reopened deck requires fresh human confirmation.
-2. **Sensor Freshness Feeding:** For uncrewed checks, the caller must supply simulated `DeckEvidence` matching the exact tick timestamp.
-3. **Separation of Policy Gate from Execution:** Calling `recovery_gate()` evaluates authorization. It does not actuate equipment, alter ship heading, or move throttles. The caller must inspect `gate.permitted` prior to dispatching state transitions.
-4. **Track A Ownership Boundaries:** Crew policy determines whether the flight deck gate permits entry. Track A retains exclusive authority over physical propulsion, speed/course settling feasibility, steering margins, and battery exhaustion calculations.
-
----
-
-## 7. Implementation Status vs. Integrated Execution
-
-- **Implemented in Code (`shipos/crew/policy.py` at `abfe471`):**
-  - Pure evaluation of `recovery_gate`, `early_clearance`, and `machinery_lock`.
-  - Machine-readable blocker codes and weather-aware transition planner integration.
-  - Focused edge-case review completed by `droid`; corrections owned and merged by Claude into PR #19. Unit tests pass in `tests/crew/test_crew_policy.py`.
-- **Current Integration Status (Gaps):**
-  - Neither the simulation runner (`shipos.sim.runner.Runner`) nor the API server (`shipos.api.server`) currently calls the crew policy gate during live tick execution.
-  - The simulator runner applies scheduled mode changes declaratively without gate arbitration.
-  - Live end-to-end flight deck clearance with event-driven confirmation remains an open integration deliverable.
+Sources: [crew policy](CREW_POLICY.md), [evidence lifecycle](CREW_LIFECYCLE.md),
+[execution semantics](SIM_EXECUTION.md), [API acceptance tests](../tests/api/test_execution_acceptance.py).
+[Rendered memo](scenario_C_memo.pdf).
