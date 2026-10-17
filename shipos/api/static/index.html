@@ -78,6 +78,24 @@
           <button class="btn quiet" data-op="arbitration" type="button">Who goes first? (D3 recovery)</button>
           <button class="btn quiet" data-op="shedding" type="button">Degradation plan (D4)</button>
         </div>
+
+        <h2>Simulated execution</h2>
+        <p class="hint">Applying engine actions to the simulated ship starts a fresh run. Real equipment is never commanded.</p>
+        <div class="row">
+          <label class="inline switch"><input id="execution" type="checkbox" data-capability="execution" disabled> Apply engine actions in the simulation</label>
+          <button id="confirmDeck" class="btn" type="button" data-capability="confirm_deck" disabled>Confirm flight deck clear (operator)</button>
+        </div>
+        <ul id="capabilityNotes" class="capnotes" aria-label="Unavailable controls"></ul>
+
+        <h2>Mission status</h2>
+        <dl id="missionStatus" class="status"></dl>
+
+        <details id="envAdvanced" class="advanced">
+          <summary>Advanced: environment inputs</summary>
+          <p class="hint">Selecting cached weather starts a fresh run. Installation windows are conditional planning eligibility only; nothing is installed.</p>
+          <label>Cached environment<select id="environment" data-capability="environment" disabled><option value="">Scenario default (no cached forecast)</option></select></label>
+          <p id="environmentStatus" class="hint"></p>
+        </details>
       </section>
 
       <section class="panel record" aria-label="Session record">

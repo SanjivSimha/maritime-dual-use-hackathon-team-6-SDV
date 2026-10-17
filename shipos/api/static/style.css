@@ -146,6 +146,23 @@ svg text { fill: var(--text); font: 12px "Segoe UI", system-ui, sans-serif; }
 .log .why { display: block; color: var(--muted); }
 .foot { padding: 8px 24px 20px; color: var(--muted); font-size: 12px; }
 
+/* Run mission: runtime controls and the six-way status */
+.switch { font-weight: 600; color: var(--text); }
+.capnotes { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--na); }
+.capnotes:empty { display: none; }
+.status { display: grid; grid-template-columns: 12em 1fr; gap: 0; margin: 0; border: 1px solid var(--line); border-radius: 6px; }
+.status dt, .status dd { margin: 0; padding: 7px 10px; border-top: 1px solid var(--line); font-size: 13px; }
+.status dt:first-of-type, .status dt:first-of-type + dd { border-top: none; }
+.status dt { font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+.status dd ul { margin: 0; padding-left: 16px; }
+.status .k-state { color: var(--text); }
+.status .k-rec { color: var(--info); }
+.status .k-prep { color: var(--defer); }
+.status .k-confirm { color: var(--cond); }
+.status .k-applied { color: var(--ok); }
+.status .k-blocked { color: var(--bad); }
+.status .na { color: var(--na); font-style: italic; }
+
 @media (max-width: 1000px) {
   .workspace, .split { grid-template-columns: 1fr; }
   .gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -39,6 +39,17 @@ const RESOURCES = {
   mast: "Mast positions", mass: "Mass and stability", data: "Data links",
   compute: "Compute", time: "Response time",
 };
+// Runtime controls proposed for main's API. A control is enabled only when the server's own
+// OpenAPI schema offers its command AND this UI is wired to that command's published payload.
+// Nothing here guesses a payload or a response.
+const RUNTIME = {
+  execution: "Simulated execution",
+  confirm_deck: "Operator deck confirmation",
+  environment: "Cached environment selection",
+};
+const WIRED = new Set();  // filled in once main publishes the exact payload/response shapes
+let serverOps;  // undefined: checking; null: unreadable; array: Command.op values
+
 const PRIORITY_NAMES = {survey_primary: "Survey", sar_primary: "Search and rescue", patrol: "Patrol"};
 
 async function command(cmd) {
@@ -95,6 +106,86 @@ function render(data) {
   renderLayout();
   renderDecision(state.decision);
   renderLog();
+  renderMissionStatus();
+}
+
+function capabilityReason(op) {
+  if (serverOps === undefined) return "checking what this server offers";
+  if (serverOps === null) return "the server's capabilities could not be read";
+  if (!serverOps.includes(op)) return "this server does not offer it yet";
+  if (!WIRED.has(op)) return "the server offers it, but this page is not wired to its published payload yet";
+  return null;
+}
+
+function applyCapabilities() {
+  document.querySelectorAll("[data-capability]").forEach(el => {
+    const reason = capabilityReason(el.dataset.capability);
+    el.disabled = reason !== null;
+    el.title = reason ? `Unavailable: ${reason}` : "";
+  });
+  $("capabilityNotes").replaceChildren(...Object.entries(RUNTIME)
+    .filter(([op]) => capabilityReason(op))
+    .map(([op, label]) => node("li", `${label} unavailable: ${capabilityReason(op)}.`)));
+  const env = capabilityReason("environment");
+  $("environmentStatus").textContent = env
+    ? `Unavailable: ${env}. Installation-window eligibility: not reported.`
+    : "";
+  if (state) renderMissionStatus();
+}
+
+async function loadCapabilities() {
+  try {
+    const response = await fetch("/openapi.json");
+    if (!response.ok) throw new Error();
+    const schema = await response.json();
+    serverOps = schema?.components?.schemas?.Command?.properties?.op?.enum ?? [];
+  } catch { serverOps = null; }
+  applyCapabilities();
+}
+
+// Six things a mission operator must not confuse. Rows show only what the server reported.
+function renderMissionStatus() {
+  const el = $("missionStatus");
+  const snap = state.snapshot;
+  const rec = ["arbitration", "shedding"].includes(state.decision?.kind) ? state.decision
+    : [...state.history].reverse().map(h => h.decision).find(d => ["arbitration", "shedding"].includes(d.kind));
+  const na = text => node("span", text, "na");
+  const items = values => {
+    const ul = node("ul");
+    ul.append(...values.map(v => node("li", v)));
+    return ul;
+  };
+  const row = (label, cls, ...content) => {
+    el.append(node("dt", label, cls));
+    const dd = node("dd");
+    dd.append(...content);
+    el.append(dd);
+  };
+  el.replaceChildren();
+  row("Current simulated state", "k-state", `t = ${number(snap.t_s)} s · ${snap.platform.gensets_online} generator(s) · deck ${snap.ship.deck} · ` +
+    Object.entries(snap.guests).map(([id, rt]) => `${id} ${rt.mode}${rt.battery_pct == null ? "" : ` (${number(rt.battery_pct)}%)`}`).join(", "));
+  if (rec) {
+    const [label] = VERDICTS[rec.verdict] ?? [rec.verdict];
+    const lines = [`${KINDS[rec.kind] ?? rec.kind}: ${label}`];
+    if (rec.winner) lines.push(`Goes first: ${rec.winner}; yields: ${rec.loser ?? "none"}`);
+    for (const c of rec.costs ?? []) lines.push(`${c.guest === rec.loser ? "Losing mission cost" : "Cost"}: ${c.guest} ${number(c.amount)} ${c.unit} (${c.what})`);
+    for (const a of rec.chosen?.actions ?? []) lines.push(`Recommended: ${actionText(a)}`);
+    row("Engine recommendation", "k-rec", items(lines));
+    const prep = (rec.state_requests ?? []).map(r => `${r.variable} → ${r.to} at +${number(r.start_s)} s for ${number(r.duration_s)} s (requested, not executed)`);
+    row("Pending preparation", "k-prep", prep.length ? items(prep) : na("None requested by the engine"));
+  } else {
+    row("Engine recommendation", "k-rec", na("No D3/D4 recommendation yet: report the battery, trip a generator or ask the engine"));
+    row("Pending preparation", "k-prep", na("None requested"));
+  }
+  const confirmStep = (rec?.state_requests ?? []).some(r => r.variable.startsWith("confirm:"));
+  row("Operator confirmation required", "k-confirm", na(confirmStep
+    ? "The plan includes a confirmation step; whether one is required or received is not reported by this server"
+    : "Not reported by this server"));
+  const execution = capabilityReason("execution");
+  row("Applied simulated action", "k-applied", na(serverOps && !serverOps.includes("execution")
+    ? "None: this server records decisions without applying them"
+    : `Not reported${execution ? ` (${execution})` : ""}`));
+  row("Blocked action and reason", "k-blocked", na("Not reported by this server"));
 }
 
 function renderAboard(snap) {
@@ -342,6 +433,7 @@ async function start() {
     const response = await fetch("/api/sessions", {method: "POST"});
     if (!response.ok) throw new Error("Cannot create local session");
     render(await response.json());
+    loadCapabilities();
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${scheme}//${location.host}/ws/${state.id}`);
     socket.onopen = () => $("transport").textContent = "Local HTTP and WebSocket connected · offline";
