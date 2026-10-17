@@ -1,6 +1,6 @@
-﻿Run from the repository root in PowerShell. The integration branch imports PR #17
-(API/UI), PR #18 (simulator), and PR #20 (locked WebSocket runtime). No temporary
-websockets overlay is needed:
+Recommended launch: `.\tools\demo.ps1 -Port 8001` (see the root README). It runs
+the equivalent of the commands below with any existing uv, offline and locked.
+Manual form, from the repository root in PowerShell:
 
 ```powershell
 .\.tools\uv.exe sync --locked
@@ -30,7 +30,8 @@ Click **Verify and execution-replay**, then export the evidence bundle. It embed
 the full unfamiliar card, so replay does not load a repository file for that card.
 Reset removes it. The API command is `{"op":"import_card","card_json":"<complete JSON text>"}`.
 Malformed JSON, missing fields, invalid references/structures, nonfinite numbers,
-unresolved `$...` references, and installed-ID collisions return readable errors
+unresolved `$...` references, blank IDs, installed-ID collisions and `import_card`
+commands that also carry `card`/`value` (use `admit` for the quick mass edit) return readable errors
 without committing snapshot/proposed-card/history/log changes. Validation uses
 GuestManifest and the existing guest_errors helper; it does not certify new
 physics or guarantee that every edit changes the verdict. No new assumptions are
@@ -58,7 +59,9 @@ Tested interaction sequence:
    one simulated second. Every injected event targets public runner.next_t_s.
 5. Click Step (t=1), fast-forward 3 ticks (t=4), then inject genset trip (t=5).
    Platform status becomes one generator. D4 remains unavailable. HTTP and WebSocket
-   receive the same updated snapshots. No action-applier or crew policy runs.
+   receive the same updated snapshots. No action-applier or crew policy runs, and
+   the session Runner does not use the cached environment (`EnvironmentInput` is an
+   explicit opt-in for direct Runner use only).
 6. Click Verify and execution-replay: integrity is checked and the complete run is
    re-executed with the same callback and captured admission envelope. Every actual
    record must match byte-for-byte. A valid recomputed chain containing a false

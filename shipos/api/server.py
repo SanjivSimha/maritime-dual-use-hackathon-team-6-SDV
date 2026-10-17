@@ -108,6 +108,8 @@ def apply(state: Session, cmd: Command) -> Session:
     catalogue = {**context.manifests, **context.cards}
     inputs = []
     if cmd.op == "import_card":
+        if cmd.card is not None or cmd.value is not None:
+            raise ValueError("Submit either a complete card_json or a catalog card/mass edit")
         card = adapter.parse_card(cmd.card_json, catalogue)
         if card.id in state.snapshot.guests:
             raise ValueError("Cannot replace an installed guest; use a proposed guest ID")

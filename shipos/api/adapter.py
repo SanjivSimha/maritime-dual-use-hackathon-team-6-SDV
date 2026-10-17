@@ -36,6 +36,8 @@ def parse_card(text: str, catalogue: dict[str, GuestManifest]) -> GuestManifest:
     json.dumps(raw, allow_nan=False)  # Also rejects overflow such as 1e999.
     card = GuestManifest.model_validate(raw)
     json.dumps(card.model_dump(mode="json"), allow_nan=False)  # Includes coerced numeric strings.
+    if not card.id.strip():
+        raise ValueError("A nonempty guest ID is required")
     errors = guest_errors(card, {**catalogue, card.id: card})
     if errors:
         raise ValueError("; ".join(errors))
