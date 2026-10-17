@@ -281,9 +281,7 @@ class Simulation:
 
     def advance(self, ticks=1, inputs=()):
         if not 1 <= ticks <= MAX_TICKS:
-            raise ValueError(
-                f"Use 1-{MAX_TICKS} ticks per command"
-            )
+            raise ValueError(f"Use 1-{MAX_TICKS} ticks per command")
         if self.runner.next_t_s + ticks - 1 > self.horizon_s:
             raise ValueError(
                 f"The {'execution' if self.execution else 'observation'} run ends at "
