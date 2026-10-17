@@ -1,0 +1,6 @@
+- t: 480
+  event: battery_report
+  payload: {guest_id: G4, battery_pct: 18}
+- t: 720
+  event: genset_trip
+  payload: {gensets_online: 1}
