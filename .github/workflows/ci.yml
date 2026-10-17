@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-hygiene:
+    name: PR hygiene
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Branch name follows a/<topic> or b/<topic>
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ ! "$HEAD_REF" =~ ^(a|b)/[a-z0-9._-]+$ ]]; then
+            echo "::error::Branch '$HEAD_REF' must be a/<topic> (Person A) or b/<topic> (Person B). See CLAUDE.md."
+            exit 1
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv lock --check
+      - run: uv sync --locked
+      - run: make lint
+
+  guardrails:
+    name: Guardrails (no literals in engine/physics)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: make guard
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: make test
