@@ -48,6 +48,14 @@
           <button>Run real admission</button>
         </form>
         <p>Edits update this session's validated manifest. Evaluation does not install equipment.</p>
+        <form id="importCard">
+          <label>Complete judge card (resolved JSON)
+            <textarea id="cardJson" rows="16" cols="60" spellcheck="false" required></textarea>
+          </label>
+          <button id="loadCardJson" type="button">Load selected card JSON</button>
+          <button type="submit">Validate and admit complete card</button>
+        </form>
+        <p>Edit any supported field or give unfamiliar equipment its own ID. Supply resolved values; assumption references and installed-guest replacements are rejected.</p>
         <h2>Decision</h2><article id="decision">Select a card and evaluate.</article>
         <h2>Engine and event controls</h2>
         <div class="controls">
