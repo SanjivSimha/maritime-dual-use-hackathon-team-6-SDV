@@ -20,3 +20,8 @@ assumptions:
     unit: weight
     why: Mission-critical is derived from the priority file (B.0), not a stored boolean; only "high" guests qualify.
     source: invented
+  - id: admission.interlock_capability_fraction
+    value: 0.05
+    unit: fraction of a guest's capability
+    why: An interlock defers one short operation (e.g. a 5-min winch run) for at most one charging cycle (≤ 20 min), a few times a day. We price that at 5 % of the deferred guest's capability.
+    source: invented

@@ -221,7 +221,8 @@ def render(d: Decision) -> str:
             if d.chosen is not None and gain is not None:
                 total = d.chosen.cost + d.chosen.cost_contingent
                 price = f"; this costs {fmt(total)} capability against {fmt(gain)} returned"
-            return f"Admit {s} if {fix}: {clause}{price}{_costs(d)}."
+            holds = "; holds with one genset down" if d.holds_one_genset_down else ""
+            return f"Admit {s} if {fix}: {clause}{price}{_costs(d)}{holds}."
         if d.verdict == Verdict.NO:
             why = ""
             if d.chosen is not None and d.chosen.actions:
