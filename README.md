@@ -1,107 +1,109 @@
-# ShipOS: explainable vessel resource governance
+# PoseidonOS: a resource governor for a software-defined vessel
 
-Maritime Dual-Use Hackathon 2026, team 6, Fincantieri challenge. ShipOS evaluates
-machine-readable equipment cards against eight finite budgets: power, heat, deck,
-mast, mass/stability, data links, compute and response time. It is a civil-use,
-offline prototype with deterministic decisions and no ML in the decision path.
-This submission describes merged baseline `fcd8c58` (PR #46), not full challenge completion.
+Team 6, Maritime Dual-Use Hackathon 2026, Fincantieri challenge. PoseidonOS (Python package
+`shipos`) runs on the ship's fixed compute rack, between platform automation and the mission
+systems. It owns eight finite budgets (power, heat rejection, deck, mast, mass/stability, data
+links, compute, response time) and decides which guest equipment may come aboard, where it goes,
+who wins a contention, and what is shed when a generator trips. It runs offline and is
+deterministic. There is no ML in the decision path, and every decision carries one sentence
+generated from the constraint that bound it. Civil use only.
 
-## Prepare once; launch offline
+## Run it: one command
 
-From the repository root in Windows PowerShell, install Python 3.11+ and uv while
-online (`py -m pip install --user uv` if needed), then:
-
-```powershell
-.\tools\demo.ps1 -Prepare
-.\tools\demo.ps1
+```bash
+make install   # once, online: uv sync --locked (Python 3.11+, uv)
+make demo      # offline: dashboard at http://127.0.0.1:8000/
 ```
 
-Open http://127.0.0.1:8000/; Ctrl+C stops the foreground server. Preparation runs
-`uv sync --locked`; offline launch uses the populated uv cache and local assets.
-No CDN or frontend build is required. The launcher finds uv on PATH, `py -m uv`,
-or an existing `.tools/uv.exe`. It does not install uv. A cold cache or busy port
-is an error; choose `-Port 8765` for another port. Invoke the script by its path
-if outside the repository. If local script policy prevents running it, use the
-manual server command below after preparation:
+On Windows without `make`, use `.\tools\demo.ps1 -Prepare` once, then `.\tools\demo.ps1`. The
+decision engine is never mocked: the dashboard, the simulator and the tests all call the same
+`shipos.engine` functions. `make check` runs lint, the no-magic-numbers guardrail and the full test suite
+(481 passed at submission).
 
-```powershell
-uv run --locked --offline python -m uvicorn shipos.api.server:app --host 127.0.0.1 --port 8000 --ws websockets-sansio
+## Architecture
+
+```
+ data/ship  (Annex A)      data/guests  G1–G6 cards        data/priorities  (swappable)
+ data/assumptions (D6)     schema/guest_manifest.json      data/envelopes   (A.10)
+            │                         │                              │
+            └──────────── frozen contracts (shipos/contracts.py) ────┘
+                                      │
+ sim: seeded 1 Hz Runner ── event timeline (battery, genset trip, card, priority swap, crew)
+   │  WorldSnapshot                   ▲  Decisions
+   ▼                                  │
+ physics: 8 budgets, power→heat 1:1, cooling(T_sea), reserve(speed, gensets), mass×position
+   │
+ engine kernel: worst coincident draw over modes × exclusions × ship-state conflicts
+   ├─ D1 admission ─ D2 placement ─ D3 arbitration ─ D4 shedding ── rationale.render()
+   ▼
+ crew policy (14 / 6 / 0) ── hash-chained JSONL log (replayable) ── FastAPI + WebSocket
+                                                                    └─ one screen: schematic,
+                                                                       8 gauges, decision log
 ```
 
-Use one worker. Sessions and archived runs are in memory; export before stopping.
-The locked WebSocket backend is included. No real vessel or camera is connected.
+## Decision classes: component and declared objective
 
-## Demo order: Scenario B, then Scenario A
+| | Component | What it optimises |
+|---|---|---|
+| **Manifest** | `shipos/contracts.py` `GuestManifest`, `schema/guest_manifest.schema.json`, `data/guests/*.yaml` | Expresses what Kubernetes cannot: modes (min/nominal/peak, duration, next mode, interruptible), heat path (water/air), discrete positions (preferred/allowed), mass per part, ship-state conditions (speed, course, noise, deck, emission, wind, sea state), part-of / requires / excludes (absolute or conditional), safety-critical, capability by mission. Guide: `docs/ADDING_A_CARD.md`. |
+| **D1** Admission ≤ 30 s | `shipos/engine/admission.py` | Admit only if every mission-envelope corner holds (slow and cruise bands × one genset down × 30 °C water), never pier-side. Otherwise rank fixes by priority-weighted capability lost (permanent first, then contingent throttle / standby / interlock), then by actions touched. *yes-if* only if the fix costs less than the card returns. Names the binding class and states whether it holds with one genset down. At sea it answers *not now* with the next window. At 0 crew it proposes logical re-tasking. |
+| **D2** Placement | `shipos/engine/placement.py` | Lexicographic: feasible in every corner, then fewest moves, then largest minimum normalised margin (stability, mission lines), then most future flexibility (catalogue cards still mountable), then preferred positions, then capability after placement effects. Exhaustive search; rejected alternatives are reported with a reason. |
+| **D3** Right of way ≤ 2 s | `shipos/engine/arbitration.py` | Hard constraints first (drone below 20 % battery must land within 12 min). Then minimise priority-weighted capability-minutes lost (the loser's re-run and wait, plus the winner's blocked follow-on). The conflict is found by intersecting the two guests' conditions on ship state; no guest pair is hard-coded. |
+| **D4** Degradation, first action ≤ 5 s, full sequence ≤ 60 s | `shipos/engine/shedding.py` | Feasible at every instant of a forecast horizon. Order: fewest mission-critical guests touched, then lowest tier (defer / throttle to low-power, then standby, then off), then least capability-minutes, then fewest actions. Never touches a safety-critical guest, the protected D3 winner or a non-interruptible mode. If nothing needs shedding, it still states every guest's loss and the armed shed ladder. |
+| **D5** Crew as a setting | `shipos/crew/policy.py`, `lifecycle.py` | Rule: "flight deck clear and confirmed before recovery". At 14 or 6 crew a human confirms. At 0 it is automatic only on fresh deck evidence, and impossible if the deck is occupied. Memo: `deliverables/03_scenario_C_memo/`. |
+| **D6** Physical Account | `data/assumptions/*.yaml`, `tools/physical_account.py` | Every invented number has a value, unit, range, reason and source, and is read through `A("<id>")`. CI fails on a numeric literal in physics or engine code, and the registry lists every use site. |
 
-**B: contention, preparation, explicit permission.** Select LIVE, Scenario B,
-14 crew and survey priority; enable simulated execution (an explicit fresh run).
-Step/fast-forward, at most 120 ticks per command. The first step emits t=0.
-The baseline battery report at t=480 invokes real D3. G3 is paused under survey
-priority or suspended under SAR; G4 recovery wins. At t=840 preparation is ready,
-but G4 remains flying until the operator records deck-clear confirmation. Confirm
-at the next tick, t=841: G4 enters recovery. At t=1021 its declared continuation
-enters launching, then flying, **not charging**. Repeat under the other priority;
-6/0 crew on the baseline occupied deck produce denial/blockers, not a landing.
+Shared by D1–D4: `engine/kernel.py` computes the **worst coincident draw**, the highest
+power or heat combination of modes the guests could actually be in at once, given exclusions,
+interlocks and ship-state conflicts. `engine/rationale.py` builds each sentence from the
+binding `ConstraintResult` (resource, capacity, demand, corner, contributors). There are no canned strings.
 
-The t=720 generator trip invokes D4 but does not itself cause an overload. In the
-observation baseline the nominal draw is 49.5 kW, below the 100 kW one-genset
-reserve. Synthetic charging-overlap tests are separate from baseline B. Execution
-is bounded to 1800 simulated seconds; observation to 720. Neither is a latency claim.
+## What it does on the reference scenarios
 
-**A: unfamiliar equipment and a changed number.** Reset restores observation-mode
-LIVE A, baseline inputs and seed. Select G4: evaluating its declared 0.9 t body mass
-returns `yes_if`; 20 t returns `no`, binding on hangar mass. Open the complete-card
-JSON editor, load G4, change `id` to `JUDGE_DRONE` and its charging-mode `power_kw`
-to 41, then validate/evaluate. Real admission receives the complete card. Proposed
-cards remain separate from installed guests; admission never installs equipment.
-Malformed/nonfinite input or an installed-ID collision is rejected transactionally.
-Not every numeric edit changes a verdict. Export evidence and verify replay.
+The full log is in `deliverables/05_validation/` (48/48 checks, real engine).
 
-## Architecture and current evidence
+- **A** (G1, G2, G5 installed; jury card G4): *yes-if* in about 50 ms. "At slow speed in 30 °C water with
+  one genset down, guests need 101.5 kW against 100 kW usable … Admit G4 if G2's winch waits
+  while G4 charging." Five ranked alternatives (throttle G5, shed G1, …). Change G4 charging to
+  70 kW and the fix becomes *G5 to low-power (−37 kW)*. Change its mass to 20 t and it is refused on hangar mass.
+- **A′**: a port-only card at sea gives *not now: next port call within 14 days*. At 0 crew the same
+  answer also re-tasks G5's edge compute and 92 free rack cores.
+- **B min 8**: G4 wins under both priority files (hard 12-min deadline vs 41 min to the end of the leg).
+  Survey primary: *G3 holds 15 min, cost 23 survey-min*. SAR primary: *G3 suspends, 35 kW is reserved
+  for G4, cost 83 survey-min*.
+- **B min 12**: with G4 charging over G3's non-interruptible recharge (106.5 kW against 100 kW), survey
+  primary throttles G5 to its 8 kW low-power mode at t+1 s, and SAR primary defers G3's charge 5 min and keeps G5.
+  Each sentence states every guest's loss. On the baseline timeline the drone is still airborne at
+  minute 12 (49.5 kW drawn), so the honest answer is "no shedding needed" plus the armed ladder.
+- **Determinism**: same seed and timeline give the same SHA-256 log hash. Export and *Verify by replaying*
+  re-executes the engine byte for byte.
 
-YAML/cards and assumptions -> frozen contracts -> 1 Hz seeded Runner -> pure
-D1-D4 engine callback -> optional execution controller -> updated snapshot and
-hash-chained JSONL -> FastAPI/WebSocket -> local JS/CSS/SVG illustrated dashboard.
+## Our card: G6 Survivor-care medical module
 
-| Component | Merged behavior and evidence boundary |
-|---|---|
-| D1 admission / D2 placement | Real engine, envelope checks, placement and rationale; API tests cover edits, unfamiliar cards and rollback. |
-| D3 arbitration / D4 degradation | Real engines. Observation records recommendations; opt-in execution schedules supported chosen feasible actions. Ambiguous/unsupported semantics remain blocked. |
-| D5 crew | Policy and evidence lifecycle are called by API/controller. Human confirmation is received input, never inferred from a planner requirement. Zero-crew evidence is simulated. |
-| Environment | UI/API opt-in selects an allowlisted cached source with provenance, scenario start, layering and fixed timezone offset. Windows mean eligibility, not permission; no runtime fetch. |
-| D6 Physical Account | [One-page account](docs/PHYSICAL_ACCOUNT.pdf) with registry appendix; [editable source](docs/PHYSICAL_ACCOUNT.md). |
+`data/guests/G6.yaml` is a 2.4 t water-cooled 10-ft module drawing 3 kW standby and 18 kW while treating, with a
+10 kW compressor-start peak for 20 s. It **requires G5** (telemedicine over SATCOM) and is
+**safety-critical**. It exercises the B.0 fields that no Annex card sets. Without G5 aboard it is
+refused ("G6 requires G5 …"). In Scenario A it goes to the free Bay 1 half. During a genset trip
+D4 sheds around it ("G6 keeps treating").
 
-The merged [API acceptance tests](tests/api/test_execution_acceptance.py) exercise
-real D3, applied recovery, survey/SAR, crew 14/6/0, captured weather and byte-identical
-execution replay. [Simulator tests](tests/sim/) include synthetic contract-edge
-and protected-resume cases. Local-Chrome tests cover UI controls and ship rendering;
-some control tests substitute responses and prove rendering only. Test success is
-not evidence of real hardware operation, universal mission success or certification.
+## Limitations
 
-## Export, replay and limits
+- Stability is a weighted-tonnes proxy (Annex A.4 multipliers), not hydrostatics. Sea-state and
+  weather mapping, and A.6 transition times, are engineering upper bounds, not ship trials.
+- Cooling inertia (+30 kW for 60 s) is modelled in physics but not used by the D4 planner.
+  The A.11 250 kg portable limit is declared but not yet enforced, because no card installs at sea.
+- Zero-crew deck evidence is simulated (no camera integration). Sessions live in memory: export before
+  restarting. Timing ceilings are measured in tests on a laptop, not on the A.7 rack.
+- Our reading of the brief differs in one place: Annex B says "any four exceed the 10 t margin",
+  but G1+G2+G4+G5 (7.61 t) and G1+G3+G4+G5 (9.61 t) fit. We follow the card arithmetic.
 
-Download the JSON evidence bundle and canonical JSONL; retain the final hash
-separately. Verify by replaying re-executes actual records, not just the hash chain.
-The bundle captures ship, manifests, priorities, timeline, seed, profiles, execution
-configuration, environment and admission envelope, including imported cards and
-operator inputs. Replay still needs compatible callback/engine/controller code,
-assumption registry and Python/runtime; it is not an independently portable executable.
-Execution/environment changes archive the prior run; Reset archives then restores A.
-Export before scenario/mode changes, which start fresh runs.
+## With another week
 
-Exact D4 deferral metadata producer [#43](https://github.com/SanjivSimha/maritime-dual-use-hackathon-team-6-SDV/pull/43)
-is separate from this baseline; missing exact facts fail closed. Ambiguous D3
-deferrals remain blocked. Winner-protection lifetime is provisional and can retain
-protection indefinitely. G6 is absent. Stability, weather mapping and transitions
-are engineering proxies, and deck evidence is simulated. No ship trials, mentor
-validation or measured decision-latency compliance is claimed here. Performance
-measurement is a separate workstream. The proposed extra 40 kW of warm-water cooling
-is an engineering proposal, not an optimised or measured result.
+1. A MIP formulation (OR-Tools) of D1/D2 as a cross-check on the exhaustive search, for larger catalogues.
+2. Use the cooling-inertia buffer in D4, so a short overlap rides through instead of shedding.
+3. Battery *forecasting* (not deciding) from drone telemetry, to start the 6-crew deck clearance
+   15 min early instead of reacting to the 20 % alert.
+4. At-sea installation windows for portable modules (≤ 250 kg) on the live Copernicus feed.
+5. A second implemented crew rule ("no winch while the survey vehicle listens") at 6 and 0 crew.
 
-Required artifacts and open submission items: [checklist](docs/SUBMISSION_CHECKLIST.md).
-[Scenario C memo PDF](docs/scenario_C_memo.pdf) and [source](docs/scenario_C_memo.md).
-[Card guide](docs/ADDING_A_CARD.md), [execution semantics](docs/SIM_EXECUTION.md),
-[environment](docs/ENVIRONMENT.md), [contracts](CONTRACT.md), [contributor checks](CLAUDE.md).
-Some older integration documents describe historical checkpoints; use this baseline
-and current code for implementation status. AI-assisted development is disclosed in
-PR history; the final submission must retain the organisers' required disclosure.
+Deliverables index: `deliverables/README.md`. Plan and arithmetic: `docs/PLAN.md`.

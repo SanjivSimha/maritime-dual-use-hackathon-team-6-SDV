@@ -246,7 +246,7 @@ skips because the installed Track A producer predates #43, after verifying rejec
 ## Replay and offline reproduction
 
 Observation mode retains v1/v2 bytes and the published 721-tick Scenario B hash
-`ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28`.
+`3e43733a289dabdbd77b2cda1bbea4cc176f153bf9e6eb101e205b7b691712d7`.
 Execution uses header version 3, execution=true, optional embedded captured weather,
 and controller evidence in every tick. Operator/forecast inputs are recorded at their
 exact ticks and reinjected automatically on execution replay. No cache path, network

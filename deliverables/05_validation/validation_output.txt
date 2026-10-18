@@ -1,0 +1,162 @@
+============================================================================== 
+MANIFEST (B.0)
+==============================================================================
+[PASS] MAN-1  Five Annex B cards load and validate
+         cards: ['G1', 'G2', 'G3', 'G4', 'G5', 'G6']
+[PASS] MAN-2  One card of the team's own invention in data/guests/
+         extra cards: ['G6']
+[PASS] MAN-3  Manifest expresses B.0 ontology fields
+         top-level keys: ['activities', 'allowed', 'area_m2', 'at_sea_swap', 'battery', 'capability', 'compute', 'cooling', 'data', 'excludes', 'id', 'initial_mode', 'installation', 'logical_reconfig', 'mass_t', 'modes', 'name', 'parts', 'preferred', 'radar_sensitivity_loss', 'requires', 'safety_commands', 'safety_critical']
+[PASS] MAN-4  Schema file exists
+[PASS] MAN-5  Documented way to add a card
+============================================================================== 
+PLATFORM MODEL (A.1–A.8)
+==============================================================================
+[PASS] PHY-1  Reserve: 200 kW cruise, 100 kW one genset down (A.1)
+         cruise 2 gensets=200.0  1 genset=100.0  slow 2=200.0
+[PASS] PHY-2  Cooling 160 kW @12 °C → 120 kW @30 °C linear, −40 % degraded (A.2)
+         12°C=160.0 21°C=140.0 30°C=120.0 30°C degraded=72.0 (expected 72 = 120×0.6)
+[PASS] PHY-3  1 kW electric = 1 kW heat
+[PASS] PHY-4  Mast multiplier ×3: 60 kg antenna costs 180 kg (A.4)
+         mass spec: {'margin_t': 10.0, 'stability_budget_t': 12.0}
+[PASS] PHY-5  All eight resource classes exist in the contract
+         power, heat, deck, mast, mass, data, compute, time
+[PASS] PHY-6  Annex B check: G5+G4+G3 charging = 105 kW > ~100 one-genset
+         105.0 kW
+[PASS] PHY-7  Engine mass arithmetic follows card masses (brief claims 'any four exceed 10 t'; arithmetic says two four-sets fit)
+         raw t per card {'G1': 0.045, 'G2': 3.5, 'G3': 5.5, 'G4': 1.04, 'G5': 3.025}; four-sets that fit: [('G1', 'G2', 'G4', 'G5'), ('G1', 'G3', 'G4', 'G5')]
+============================================================================== 
+SCENARIO A — D1 admission + D2 placement (installed G1, G2, G5)
+==============================================================================
+[PASS] A-G3   Card G3: verdict in < 30 s with binding class
+         verdict=yes_if binding=deck:deck.bay1 3.0/2.0 units  t=28 ms
+         placement={'G3': {'body': 'bay1'}, 'G2': {'body': 'bay2'}, 'G1': {'body': 'mast3'}}
+         holds_one_genset_down=True
+         rationale: Admit G3 if G5 is displaced: bay1 holds 2 units but G3 and G5 need 3; this costs 0.2 capability against 1 returned; cost: G5 loses 0.2 capability (restores coastal connectivity); holds with one genset down.
+[PASS] A-G3r  yes-if carries a ranked displacement list with capability lost
+         1. remove G5 (cost 0.200)
+         2. remove G2 + move G5 (cost 1.000)
+[PASS] A-G3h  States whether it holds with one genset down
+[PASS] A-G4   Card G4: verdict in < 30 s with binding class
+         verdict=yes_if binding=power:power.total 101.5/100.0 kW  t=53 ms
+         placement={'G5': {'body': 'bay1a', 'antenna': 'hangar_roof'}, 'G4': {'body': 'hangar'}, 'G2': {'body': 'bay2'}, 'G1': {'body': 'mast3'}}
+         holds_one_genset_down=False
+         rationale: Admit G4 if G2's winch waits while G4 charging with one genset down: at slow speed in 30 °C water with one genset down, guests need 101.5 kW against 100 kW usable (1.5 kW short; G5 45, G4 35, G2 20, G1 1.5 kW); this costs 0.05 capability against 0.2 returned; cost: G2 loses 0.05 capability (with one genset down).
+[PASS] A-G4r  yes-if carries a ranked displacement list with capability lost
+         1. interlock G2 (cost 0.050)
+         2. throttle G5 (cost 0.140)
+         3. shed G1 (cost 0.200)
+         4. shed G5 (cost 0.200)
+         5. remove G1 (cost 0.200)
+[PASS] A-G4h  States whether it holds with one genset down
+[PASS] A-G4x  G4 binding is power 101.5 kW vs 100 kW one-genset (1.5+20+35+45)
+         101.5 vs 100.0
+[PASS] A2-G1  Installed G2,G3,G4 → card G1: verdict in < 30 s
+         verdict=no binding=mass.margin t=49 ms
+         rationale: Refuse G1: mass would reach 10.08 t against the 10 t margin (0.08 t over); the cheapest fix (G4 is displaced) costs 0.2 capability, more than the 0.2 G1 returns.
+[PASS] A2-G5  Installed G2,G3,G4 → card G5: verdict in < 30 s
+         verdict=no binding=deck.bay2 t=44 ms
+         rationale: Refuse G5: bay2 holds 1 units but G2 and G5 need 2; the cheapest fix (G3 is displaced) costs 1 capability, more than the 0.2 G5 returns.
+============================================================================== 
+SCENARIO A — jury changes one number
+==============================================================================
+[PASS] JURY   G4 charging 20 kW (was 35): coherent verdict
+         verdict=yes binding=deck.bay2 1.0/1.0
+         Admit G4: every envelope corner holds; tightest, bay2 is now full (G2); holds with one genset down.
+[PASS] JURY   G4 charging 41 kW (was 35): coherent verdict
+         verdict=yes_if binding=power.total 107.5/100.0
+         Admit G4 if G2's winch waits while G4 charging with one genset down: at slow speed in 30 °C water with one genset down, guests need 107.5 kW against 100 kW usable (7.5 kW short; G5 45, G4 41, G2 20, G1 1.5 kW); this costs 0.05 capability against 0.2 returned; cost: G2 loses 0.05 capability (with one genset down).
+[PASS] JURY   G4 charging 70 kW (was 35): coherent verdict
+         verdict=yes_if binding=power.total 136.5/100.0
+         Admit G4 if G5 drops to low_power (−37 kW): at slow speed in 30 °C water with one genset down, guests need 136.5 kW against 100 kW usable (36.5 kW short; G4 70, G5 45, G2 20, G1 1.5 kW); this costs 0.14 capability against 0.2 returned; cost: G5 loses 0.14 capability (always).
+[PASS] JURY   G4 mass 20 t (was 1.04): refused on mass
+         verdict=no binding=deck.hangar.mass
+         Refuse G4: hangar takes 1.2 t and would carry 20.14 t (G4 20.14 t).
+============================================================================== 
+SCENARIO A′ — same card under way
+==============================================================================
+[PASS] A'-14  G3 (port-only cradle) at sea, crew 14
+         verdict=not_now next=None
+         Not now: G3 installs only in port (4 people, 6 h); next window: next port call, within 14 days.
+[PASS] A'-6   G3 (port-only cradle) at sea, crew 6
+         verdict=not_now next=None
+         Not now: G3 installs only in port (4 people, 6 h); next window: next port call, within 14 days.
+[PASS] A'-0   G3 (port-only cradle) at sea, crew 0
+         verdict=not_now next=None
+         Not now: G3 installs only in port (4 people, 6 h); next window: next port call, within 14 days; instead G5 is re-tasked: new analytics workload on the edge compute node and rack is re-tasked: 92 free cores re-allocated to aboard guests.
+[PASS] A'-0L  Crew 0 proposes logical reconfiguration instead
+         Not now: G3 installs only in port (4 people, 6 h); next window: next port call, within 14 days; instead G5 is re-tasked: new analytics workload on the edge compute node and rack is re-tasked: 92 free cores re-allocated to aboard guests.
+============================================================================== 
+SCENARIO B — D3 right of way at minute 8
+==============================================================================
+[PASS] B8-survey survey primary: decision < 2 s, winner, rationale, cost to loser
+         winner=G4 loser=G3 chosen=G4 recovery; G3 pause t=0 ms
+         binding=time.landing_deadline 41.0/12.0 min
+         costs: ['G3: 23.0 survey_leg min (8 min of the leg re-run + 15-min pause)', 'G4: 40.0 launch min (blocked while G3 re-runs)']
+         rationale: G4 goes first: G4 must land within 12 min and waiting for the end of G3 survey_leg takes 41 min; G3 holds (holding) for 15 min, G4 proceeds to recovery; cost: G3 loses 23 survey_leg min (8 min of the leg re-run + 15-min pause), G4 loses 40 launch min (blocked while G3 re-runs).
+[PASS] B8-sar sar primary: decision < 2 s, winner, rationale, cost to loser
+         winner=G4 loser=G3 chosen=G4 recovery; G3 suspend t=0 ms
+         binding=time.landing_deadline 41.0/12.0 min
+         costs: ['G3: 83.0 survey_leg min (8 min of the leg re-run + 75-min suspend)']
+         rationale: G4 goes first: G4 must land within 12 min and waiting for the end of G3 survey_leg takes 41 min; G3 suspends its survey_leg, G4 proceeds to recovery, 35 kW is reserved for G4; cost: G3 loses 83 survey_leg min (8 min of the leg re-run + 75-min suspend).
+[PASS] B8-diff Two priority files → different, coherent outcomes
+         survey: G4 recovery; G3 pause
+         sar:    G4 recovery; G3 suspend
+[PASS] B8-hard Hard constraint first: <20 % battery → land in 12 min (wait-for-leg rejected)
+         time.landing_deadline cap=12.0
+[PASS] B8-pat Third (patrol) priority file also yields a coherent decision
+         G4 goes first: G4 must land within 12 min and waiting for the end of G3 survey_leg takes 41 min; G3 suspends its survey_leg, G4 proceeds to recovery; cost: G3 loses 83 survey_leg min (8 min of the leg re-run + 75-min suspend).
+============================================================================== 
+SCENARIO B — D4 degradation at minute 12
+==============================================================================
+[PASS] B12-survey survey: plan in < 5 s, first action ≤ 5 s, sequence ≤ 60 s, winner G4 kept
+         verdict=no_action demand=82.5/100.0 t=0 ms
+         actions=[]
+         armed ladder=['G5:throttle', 'G1:shed', 'G3:standby']
+         every guest's loss: [('G1', 0.0, '% capability'), ('G3', 0.0, '% capability'), ('G4', 0.0, '% capability'), ('G5', 0.0, '% capability')]
+         rationale: Genset trip: no shedding needed; at slow speed in 24 °C water with one genset down, the 100 kW reserve keeps 17.5 kW free at 82.5 kW worst case; cost: G1 keeps on, G3 keeps holding, G4 keeps flying, G5 keeps on.
+[PASS] B12-sar sar: plan in < 5 s, first action ≤ 5 s, sequence ≤ 60 s, winner G4 kept
+         verdict=shed demand=106.5/100.0 t=0 ms
+         actions=['t+1.0s G3 defer → charging']
+         armed ladder=[]
+         every guest's loss: [('G1', 0.0, '% capability'), ('G3', 5.0, 'min'), ('G4', 0.0, '% capability'), ('G5', 0.0, '% capability')]
+         rationale: Genset trip: at slow speed in 24 °C water with one genset down, guests need 106.5 kW against 100 kW usable (6.5 kW short; G5 45, G4 35, G3 25, G1 1.5 kW); shed in order: G3 charging is deferred 5 min (−24 kW); cost: G1 keeps on, G3 loses 5 min (charging deferred), G4 keeps flying, G5 keeps on.
+[PASS] B12-survey-on-overlap survey-on-overlap: plan in < 5 s, first action ≤ 5 s, sequence ≤ 60 s, winner G4 kept
+         verdict=shed demand=106.5/100.0 t=0 ms
+         actions=['t+1.0s G5 throttle → low_power']
+         armed ladder=[]
+         every guest's loss: [('G1', 0.0, '% capability'), ('G3', 0.0, '% capability'), ('G4', 0.0, '% capability'), ('G5', 70.0, '% capability')]
+         rationale: Genset trip: at slow speed in 24 °C water with one genset down, guests need 106.5 kW against 100 kW usable (6.5 kW short; G5 45, G4 35, G3 25, G1 1.5 kW); shed in order: G5 drops to low_power (−37 kW); cost: G1 keeps on, G3 keeps holding, G4 keeps flying, G5 loses 70 % capability (low_power for 30 min).
+============================================================================== 
+G6 — team card (safety-critical, requires, peak)
+==============================================================================
+[PASS] G6-1   G6 declares safety_critical, requires and a motor-start peak
+         requires=['G5'] peak=[10.0]
+[PASS] G6-2   Unmet `requires` (G5 not aboard) refuses with the relation named
+         Refuse G6: G6 requires G5: telemedicine to a shore hospital runs over the comms node's SATCOM.
+[PASS] G6-3   Bay-half card goes to the free half, never double-books G5's half (regression)
+         verdict=yes placement={'body': 'bay1b'}
+         Admit G6: every envelope corner holds; tightest, bay1 is now full (G5, G6); holds with one genset down.
+[PASS] G6-4   Real G6 (2.4 t) in Scenario A: coherent verdict and binding
+         verdict=yes binding=deck.bay1
+         Admit G6: every envelope corner holds; tightest, bay1 is now full (G5, G6); holds with one genset down.
+[PASS] G6-5-survey D4 with G6 treating (survey): safety-critical G6 never shed
+         Genset trip: at slow speed in 24 °C water with one genset down, guests need 124.5 kW against 100 kW usable (24.5 kW short; G5 45, G4 35, G3 25, G6 18, G1 1.5 kW); shed in order: G5 drops to low_power (−37 kW); cost: G1 keeps on, G3 keeps holding, G4 keeps flying, G5 loses 70 % capability (low_power for 30 min), G6 keeps treating.
+[PASS] G6-5-sar D4 with G6 treating (sar): safety-critical G6 never shed
+         Genset trip: at slow speed in 24 °C water with one genset down, guests need 124.5 kW against 100 kW usable (24.5 kW short; G5 45, G4 35, G3 25, G6 18, G1 1.5 kW); shed in order: G3 charging is deferred 5 min (−24 kW); then G1 is switched off (−1.5 kW); cost: G1 loses 100 % capability (off for 30 min), G3 loses 5 min (charging deferred), G4 keeps flying, G5 keeps on, G6 keeps treating.
+============================================================================== 
+DETERMINISM / REPLAY (end-to-end sim, real engine callback)
+==============================================================================
+[PASS] DET-1  Same seed + timeline → identical decision-log hash
+         6488ca8c4a70f70e05a668ab91a6d6383d73b9752646655119b9a9375a7e852e  (1.15 s for 900 ticks)
+[PASS] DET-2  Replay re-executes the engine byte-identically
+[PASS] E2E-B  End-to-end B run logs decisions at t=480 (D3) and t=720 (D4)
+         t=480.0 arbitration decided: G4 goes first: G4 must land within 12 min and waiting for the end of G3 survey_leg takes 41 min; G3 holds (holding) for 15 min, G4 proceeds to recovery; cost: G
+         t=720.0 shedding no_action: Genset trip: no shedding needed; at slow speed in 24 °C water with one genset down, the 100 kW reserve keeps 50.33 kW free at 49.67 kW worst case; cost: G1 keep
+============================================================================== 
+ENGINE PURITY / OFFLINE
+==============================================================================
+[PASS] PURE   No clock, randomness, file or network I/O in shipos/engine
+[PASS] OFFL   UI loads no remote assets (offline)
+==============================================================================
+48/48 checks passed

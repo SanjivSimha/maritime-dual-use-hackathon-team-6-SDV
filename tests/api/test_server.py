@@ -157,3 +157,45 @@ def test_gauges_layout_offline_and_bad_commands(client):
     ]:
         assert command(client, state, **cmd).status_code == 422
     assert client.get("/api/sessions/missing").status_code == 404
+
+
+def test_response_time_gauge_shows_the_measured_engine_time(client):
+    """No decision yet: nothing measured. After one: wall time of the real engine call vs A.8."""
+    ship = load_ship()
+
+    def time_gauge(state):
+        return next(g for g in state["gauges"] if g["cls"] == "time")
+
+    state = session(client)
+    assert time_gauge(state)["status"] == "unavailable"
+
+    admitted = command(client, state, op="admit", card="G4", value=0.9).json()
+    t = time_gauge(admitted)
+    assert t["status"] == "available" and t["resource"] == "time.admission"
+    assert t["capacity"] == ship.timing.admission_s and 0 < t["demand"] < t["capacity"]
+    assert t["facts"]["decision"] == "admission" and t["facts"]["subject"] == "G4"
+
+    stepped = command(client, admitted, op="step", ticks=3).json()
+    assert time_gauge(stepped)["demand"] == t["demand"]  # last measurement held, not zeroed
+
+    b = command(client, state, op="scenario", scenario="B").json()
+    assert time_gauge(b)["status"] == "unavailable"  # fresh run: nothing measured yet
+    d3 = command(client, b, op="event", event="battery_report", battery_pct=18).json()
+    t = time_gauge(d3)
+    assert t["resource"] == "time.arbitration" and t["capacity"] == ship.timing.arbitration_s
+    assert 0 < t["demand"] < t["capacity"]
+    d4 = command(client, d3, op="event", event="genset_trip").json()
+    t = time_gauge(d4)
+    assert t["resource"] == "time.shed_first" and t["capacity"] == ship.timing.shed_first_s
+    assert 0 < t["demand"] < t["capacity"]
+
+
+def test_measuring_response_time_leaves_the_replay_log_deterministic(client):
+    """Wall-clock latency never enters the hash-chained log: two identical runs, one hash."""
+    hashes = []
+    for _ in range(2):
+        state = session(client)
+        state = command(client, state, op="scenario", scenario="B").json()
+        state = command(client, state, op="event", event="battery_report", battery_pct=18).json()
+        hashes.append(state["final_hash"])
+    assert hashes[0] == hashes[1]

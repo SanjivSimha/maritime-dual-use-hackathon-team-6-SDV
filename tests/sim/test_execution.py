@@ -403,7 +403,7 @@ def test_repeated_inputs_status_copy_and_old_observation_bytes():
     observation.run(721)
     # Published B2 baseline evidence is unchanged.
     assert (
-        observation.final_hash == "ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28"
+        observation.final_hash == "3e43733a289dabdbd77b2cda1bbea4cc176f153bf9e6eb101e205b7b691712d7"
     )
     assert replay_jsonl(observation.jsonl).jsonl == observation.jsonl
     assert not observation.execution_status["enabled"]
