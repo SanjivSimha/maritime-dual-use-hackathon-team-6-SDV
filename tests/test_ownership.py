@@ -32,6 +32,7 @@ from tools.check_ownership import owner, violations
         ("tests/scenarios/test_scenario_a.py", None),
         ("tests/test_contracts.py", None),
         ("docs/PLAN.md", None),
+        ("docs/PHYSICAL_ACCOUNT_REGISTRY.md", None),
         (".github/workflows/ci.yml", None),
         ("Makefile", None),
         ("pyproject.toml", None),
@@ -64,6 +65,12 @@ def test_shared_files_allowed_from_both_tracks():
     shared = ["shipos/contracts.py", "tests/fixtures/x.json", "data/assumptions/heat.yaml"]
     assert violations("a/contracts-v2", shared) == []
     assert violations("b/contracts-v2", shared) == []
+
+
+def test_generated_registry_follows_engine_edits():
+    # The registry cites A() call sites by line, so an engine-only a/* change must commit it.
+    paths = ["shipos/engine/shedding.py", "docs/PHYSICAL_ACCOUNT_REGISTRY.md"]
+    assert violations("a/defer-metadata-v1", paths) == []
 
 
 def test_unknown_branch_prefix_rejected_outright():

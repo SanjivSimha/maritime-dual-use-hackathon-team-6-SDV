@@ -40,6 +40,7 @@ B_OWNED = (
 SHARED = (
     "data/assumptions/",  # CLAUDE.md rule 1: whoever adds A("<id>") adds the YAML entry
     "docs/PLAN.md",
+    "docs/PHYSICAL_ACCOUNT_REGISTRY.md",  # generated from A() call sites in both tracks' code
 )
 
 
