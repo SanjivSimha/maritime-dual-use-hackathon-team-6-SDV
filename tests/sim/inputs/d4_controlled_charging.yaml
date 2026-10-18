@@ -1,0 +1,19 @@
+﻿# Controlled synthetic execution proof, NOT canonical Scenario B or real weather.
+# Equipment is already aboard and charging at t=0; no recovery-to-charge path is asserted.
+label: controlled aboard-charging loadout
+seed: 6
+priority: survey_primary
+protected: [G4]  # explicit input to D4, not a fabricated D3 winner
+casualty: {t_s: 10, kind: genset_trip, payload: {gensets_online: 1}}
+initial:
+  t_s: 0
+  ship: {speed_kn: 12, course: steady, noise: quiet, deck: clear, emission: normal}
+  platform: {gensets_online: 2, cooling_degraded: false, situation: at_sea}
+  env: {seawater_c: 24, sea_state: 2, wind_kn: 10, layered_water: false}
+  crew: 14
+  mission_days_left: 14
+  guests:
+    G1: {id: G1, mode: "on", placement: {line: port, slots: {body: mast3}}}
+    G3: {id: G3, mode: charging, placement: {line: port, slots: {body: bay1}}}
+    G4: {id: G4, mode: charging, placement: {line: port, slots: {body: hangar}}}
+    G5: {id: G5, mode: "on", placement: {line: port, slots: {body: bay2, antenna: hangar_roof}}}
