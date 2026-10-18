@@ -60,6 +60,7 @@ function shownDecision() {
 
 // Ship view state, kept per page. Snapshot comparison and task matching reset with each run.
 let view = "top";
+const VIEWS = [["viewTop", "top"], ["viewSide", "side"], ["view3d", "3d"]];
 let selectedGid = null;
 let runKey = null;
 let prevSnap = null;
@@ -116,7 +117,6 @@ function render(data) {
     : state.execution?.enabled
       ? "Engine results for this session · simulated execution is ON (simulation only, no real equipment)"
       : "Results computed by the engine for this session · recommendations only, nothing is executed";
-  $("notice").textContent = state.notice;
   $("export").href = `/api/sessions/${state.id}/evidence`;
   $("jsonl").href = `/api/sessions/${state.id}/replay.jsonl`;
   const snap = state.snapshot;
@@ -287,7 +287,20 @@ function limitSlots() {
 
 function renderShip() {
   const items = shipItems();
-  drawShip($("ship"), view, state.ship, state.snapshot.ship, items, limitSlots(), selectedGid, gid => {
+  const is3d = view === "3d";
+  $("ship").toggleAttribute("hidden", is3d); // an SVG element has no .hidden property
+  $("ship3d").hidden = !is3d;
+  $("ship3dNote").hidden = !is3d;
+  if (is3d && !window.ship3d) {
+    $("ship3d").textContent = "The 3D view could not load in this browser (needs WebGL and JavaScript modules). Use the top or side view.";
+  } else if (is3d) {
+    window.ship3d.draw($("ship3d"), {ship: state.ship, items, highlightSlots: limitSlots(), selected: selectedGid,
+      gauges: state.gauges, platform: state.snapshot.platform, binding: shownDecision()?.binding,
+      onSelect: gid => { selectedGid = selectedGid === gid ? null : gid; renderShip(); renderSelection(); }});
+  } else {
+    window.ship3d?.stop();
+  }
+  if (!is3d) drawShip($("ship"), view, state.ship, state.snapshot.ship, items, limitSlots(), selectedGid, gid => {
     selectedGid = selectedGid === gid ? null : gid;
     if (state.guests[gid] && !state.snapshot.guests[gid] && [...$("card").options].some(o => o.value === gid)) {
       $("card").value = gid;
@@ -299,7 +312,7 @@ function renderShip() {
     const again = document.querySelector(`#ship [data-gid="${CSS.escape(gid)}"]`);
     if (again) again.focus();
   });
-  for (const id of ["viewTop", "viewSide"]) $(id).setAttribute("aria-pressed", String((id === "viewTop") === (view === "top")));
+  for (const [id, v] of VIEWS) $(id).setAttribute("aria-pressed", String(v === view));
   const used = new Set(items.flatMap(it => it.roles.map(r => r.key)));
   const LEGEND = [["proposed", "＋", "Proposed addition"], ["moved", "↔", "Proposed move"], ["winner", "▲", "Goes first"],
     ["yields", "▼", "Yields"], ["limit", "◆", "Counts toward the limiting resource"], ["affected", "•", "Recommended action"],
@@ -407,6 +420,25 @@ function recommendText(d) {
   return VERDICTS[d.verdict]?.[0] ?? d.verdict;
 }
 
+// A few words for the collapsed view; the full sentences live in the drop-down.
+function headlineText(d) {
+  if (!d) return state.scenario === "B" ? "Advance time to start the mission." : "Choose equipment and press Evaluate.";
+  const denied = (d.chosen?.actions ?? []).find(a => a.kind === "deny");
+  if (denied) return `Keep ${denied.guest} off the deck.`;
+  const b = d.binding;
+  const tightest = b ? RESOURCES[b.cls] ?? b.cls : null;
+  const actions = (d.chosen?.actions ?? []).filter(a => a.kind !== "keep");
+  if (d.kind === "admission") {
+    if (d.verdict === "no") return `Does not fit${tightest ? `: ${tightest} limit` : ""}.`;
+    if (d.verdict === "yes_if") return `Fits after ${actions.length} change(s).`;
+    if (d.verdict === "not_now") return d.next_window ? `Try again: ${d.next_window}.` : "Try again later.";
+    return "Fits within all limits.";
+  }
+  if (d.kind === "arbitration" && d.winner) return `${d.winner} goes first; ${d.loser} yields.`;
+  if (d.kind === "shedding") return actions.length ? `Reduce ${actions.length} load(s).` : "All equipment stays on.";
+  return VERDICTS[d.verdict]?.[0] ?? d.verdict;
+}
+
 function nextText(d) {
   const exec = state.execution;
   const status = exec?.status;
@@ -429,12 +461,32 @@ function nextText(d) {
   return "Nothing is pending for this plan.";
 }
 
+// Couple-word preview of each drop-down field: happened · next · changed.
+function digestText(d) {
+  if (!d) return "Details: nothing evaluated yet";
+  const happened = { admission: `Proposed ${d.subject}`, arbitration: "Recovery conflict", shedding: "Power re-check" }[d.kind] ?? (KINDS[d.kind] ?? d.kind);
+  const exec = state.execution;
+  const pending = exec?.status?.pending ?? [];
+  const confirm = (state.crew_policy?.blockers ?? []).includes("confirmation_pending") && state.snapshot.ship.deck === "clear";
+  let next = "Nothing pending";
+  if (d.kind === "admission" || !exec?.enabled) next = "Advice only";
+  else if ((d.chosen?.actions ?? []).some(a => a.kind === "deny")) next = "Recovery denied";
+  else if (confirm) next = "Confirm deck";
+  else if (pending.length) next = `${pending.length} step(s) pending`;
+  const n = lastChange ? lastChange.lines.length + lastChange.applied.length : 0;
+  const changed = n ? `${n} change(s)` : "No ship changes";
+  return `Details: ${happened} · ${next} · ${changed}`;
+}
+
 function renderStory() {
   const d = shownDecision();
   const [label, cls, icon] = storyVerdict(d);
   const banner = node("div", undefined, `verdict small ${cls}`);
-  banner.append(node("span", icon, "icon"), node("strong", label));
+  const words = node("div");
+  words.append(node("strong", label), node("span", headlineText(d), "headline"));
+  banner.append(node("span", icon, "icon"), words);
   $("storyVerdict").replaceChildren(banner);
+  $("storyDigest").textContent = digestText(d);
   const dl = $("storyRows");
   dl.replaceChildren();
   const row = (t, ...content) => {
@@ -811,7 +863,7 @@ for (const tab of ["evaluate", "mission"]) {
     $(`tab-${next}`).focus();
   };
 }
-for (const [id, v] of [["viewTop", "top"], ["viewSide", "side"]]) {
+for (const [id, v] of VIEWS) {
   $(id).onclick = () => { view = v; if (state) renderShip(); };
 }
 
