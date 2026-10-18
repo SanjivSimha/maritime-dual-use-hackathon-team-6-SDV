@@ -42,8 +42,8 @@ No literal `A()` call or `$` reference reads these; some record modelling choice
 | `compute.g4.accelerators` | 1 | accelerators | — | Person-in-water detection on drone video. | invented | `data/assumptions/compute_time.yaml:12` | `data/guests/G4.yaml:41` |
 | `compute.g5.cores` | 4 | cores | — | The node brings its own edge compute; the rack only hosts its control plane. | invented | `data/assumptions/compute_time.yaml:13` | `data/guests/G5.yaml:23` |
 | `compute.g5.mem_gb` | 16 | GB | — | See compute.g5.cores. | invented | `data/assumptions/compute_time.yaml:14` | `data/guests/G5.yaml:23` |
-| `compute.g6.cores` | 2 | cores | — | Patient-monitor aggregation and telemedicine relay. | invented | `data/assumptions/compute_time.yaml:15` | `data/guests/G6.yaml:24` |
-| `compute.g6.mem_gb` | 8 | GB | — | See compute.g6.cores. | invented | `data/assumptions/compute_time.yaml:16` | `data/guests/G6.yaml:24` |
+| `compute.g7.cores` | 2 | cores | — | Patient-monitor aggregation and telemedicine relay. | invented | `data/assumptions/compute_time.yaml:15` | `data/guests/G7.yaml:24` |
+| `compute.g7.mem_gb` | 8 | GB | — | See compute.g7.cores. | invented | `data/assumptions/compute_time.yaml:16` | `data/guests/G7.yaml:24` |
 | `placement.margin_tie_tolerance` | 0.01 | normalised margin | — | Placements whose minimum margins differ by less than 1 % are treated as equal, so the flexibility and preference criteria decide instead of noise. | invented | `data/assumptions/compute_time.yaml:17` | `shipos/engine/placement.py:206` |
 | `placement.max_candidates` | 200000 | assignments | — | Solver budget guard. The five-card problem has fewer than 100 assignments; above this limit the search refuses rather than blowing the 30 s ceiling. | invented | `data/assumptions/compute_time.yaml:22` | `shipos/engine/placement.py:247` |
 | `placement.alternatives_reported` | 3 | options | — | D2 must show the alternatives considered; three are enough for an operator to see why the choice won. | invented | `data/assumptions/compute_time.yaml:27` | `shipos/engine/placement.py:328` |
@@ -121,15 +121,15 @@ No literal `A()` call or `$` reference reads these; some record modelling choice
 | `guests.g4.landing_approach_min` | 3 | min | — | Final approach and touchdown once the ship is in the flight-deck state. | invented | `data/assumptions/other.yaml:33` | `data/guests/G4.yaml:34` |
 | `guests.g4.launch_min` | 3 | min | — | Same as the approach. | invented | `data/assumptions/other.yaml:38` | `data/guests/G4.yaml:25`<br>`data/guests/G4.yaml:35` |
 | `guests.g5.antenna_height_m` | 0.4 | m | — | A 0.3 m² comms antenna; used for the hangar-roof drone-clearance check. | invented | `data/assumptions/other.yaml:43` | `data/guests/G5.yaml:10` |
-| `guests.g6.mass_t` | 2.4 | t | [1.8, 3.0] | A 10-ft medical container (two stretchers, warming, oxygen) weighs 1.8–3 t; fits a Bay 1 half (≤ 4 t) or Bay 2. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:48` | `data/guests/G6.yaml:6` |
-| `guests.g6.standby_kw` | 3 | kW | [2, 4] | Climate control and charged medical equipment kept ready while no one is aboard the module. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:54` | `data/guests/G6.yaml:11` |
-| `guests.g6.treating_kw` | 18 | kW | [12, 25] | Two patients: forced-air warming 2 × 3 kW, oxygen concentrators 2 × 1.5 kW, HVAC 6 kW, monitors 3 kW. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:60` | `data/guests/G6.yaml:13` |
-| `guests.g6.compressor_peak_kw` | 10 | kW | [5, 15] | Inrush when the HVAC and oxygen compressors start; exercises the A.1 peak rule. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:66` | `data/guests/G6.yaml:14` |
-| `guests.g6.compressor_peak_s` | 20 | s | [10, 30] | Compressor start transient; well inside the A.1 60 s peak tolerance. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:72` | `data/guests/G6.yaml:15` |
-| `guests.g6.satcom_mbps` | 1 | Mbit/s | [0.5, 2] | Telemedicine video at low resolution plus vital-sign telemetry. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:78` | `data/guests/G6.yaml:22` |
-| `guests.g6.backbone_mbps` | 50 | Mbit/s | [10, 100] | Monitor feeds to the bridge and the edge node. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:84` | `data/guests/G6.yaml:23` |
-| `guests.g6.install_people` | 4 | people | [3, 4] | Same crane-and-hook-up crew as the other bay guests (B.G2, B.G5). | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:90` | `data/guests/G6.yaml:30` |
-| `guests.g6.install_h` | 4 | h | [4, 8] | Lower end of A.11's 4–8 h per bay guest: plug-in container, no winch to commission. | invented (G6 is a team-6 card) | `data/assumptions/other.yaml:96` | `data/guests/G6.yaml:30` |
+| `guests.g7.mass_t` | 2.4 | t | [1.8, 3.0] | A 10-ft medical container (two stretchers, warming, oxygen) weighs 1.8–3 t; fits a Bay 1 half (≤ 4 t) or Bay 2. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:48` | `data/guests/G7.yaml:6` |
+| `guests.g7.standby_kw` | 3 | kW | [2, 4] | Climate control and charged medical equipment kept ready while no one is aboard the module. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:54` | `data/guests/G7.yaml:11` |
+| `guests.g7.treating_kw` | 18 | kW | [12, 25] | Two patients: forced-air warming 2 × 3 kW, oxygen concentrators 2 × 1.5 kW, HVAC 6 kW, monitors 3 kW. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:60` | `data/guests/G7.yaml:13` |
+| `guests.g7.compressor_peak_kw` | 10 | kW | [5, 15] | Inrush when the HVAC and oxygen compressors start; exercises the A.1 peak rule. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:66` | `data/guests/G7.yaml:14` |
+| `guests.g7.compressor_peak_s` | 20 | s | [10, 30] | Compressor start transient; well inside the A.1 60 s peak tolerance. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:72` | `data/guests/G7.yaml:15` |
+| `guests.g7.satcom_mbps` | 1 | Mbit/s | [0.5, 2] | Telemedicine video at low resolution plus vital-sign telemetry. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:78` | `data/guests/G7.yaml:22` |
+| `guests.g7.backbone_mbps` | 50 | Mbit/s | [10, 100] | Monitor feeds to the bridge and the edge node. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:84` | `data/guests/G7.yaml:23` |
+| `guests.g7.install_people` | 4 | people | [3, 4] | Same crane-and-hook-up crew as the other bay guests (B.G2, B.G5). | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:90` | `data/guests/G7.yaml:30` |
+| `guests.g7.install_h` | 4 | h | [4, 8] | Lower end of A.11's 4–8 h per bay guest: plug-in container, no winch to commission. | invented (G7 is a team-6 card) | `data/assumptions/other.yaml:96` | `data/guests/G7.yaml:30` |
 
 ## Positions (`data/assumptions/positions.yaml`)
 

@@ -45,57 +45,57 @@ assumptions:
     unit: m
     why: A 0.3 m² comms antenna; used for the hangar-roof drone-clearance check.
     source: invented
-  - id: guests.g6.mass_t
+  - id: guests.g7.mass_t
     value: 2.4
     unit: t
     range: [1.8, 3.0]
     why: "A 10-ft medical container (two stretchers, warming, oxygen) weighs 1.8–3 t; fits a Bay 1 half (≤ 4 t) or Bay 2."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.standby_kw
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.standby_kw
     value: 3
     unit: kW
     range: [2, 4]
     why: "Climate control and charged medical equipment kept ready while no one is aboard the module."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.treating_kw
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.treating_kw
     value: 18
     unit: kW
     range: [12, 25]
     why: "Two patients: forced-air warming 2 × 3 kW, oxygen concentrators 2 × 1.5 kW, HVAC 6 kW, monitors 3 kW."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.compressor_peak_kw
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.compressor_peak_kw
     value: 10
     unit: kW
     range: [5, 15]
     why: "Inrush when the HVAC and oxygen compressors start; exercises the A.1 peak rule."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.compressor_peak_s
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.compressor_peak_s
     value: 20
     unit: s
     range: [10, 30]
     why: "Compressor start transient; well inside the A.1 60 s peak tolerance."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.satcom_mbps
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.satcom_mbps
     value: 1
     unit: Mbit/s
     range: [0.5, 2]
     why: "Telemedicine video at low resolution plus vital-sign telemetry."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.backbone_mbps
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.backbone_mbps
     value: 50
     unit: Mbit/s
     range: [10, 100]
     why: "Monitor feeds to the bridge and the edge node."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.install_people
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.install_people
     value: 4
     unit: people
     range: [3, 4]
     why: "Same crane-and-hook-up crew as the other bay guests (B.G2, B.G5)."
-    source: invented (G6 is a team-6 card)
-  - id: guests.g6.install_h
+    source: invented (G7 is a team-6 card)
+  - id: guests.g7.install_h
     value: 4
     unit: h
     range: [4, 8]
     why: "Lower end of A.11's 4–8 h per bay guest: plug-in container, no winch to commission."
-    source: invented (G6 is a team-6 card)
+    source: invented (G7 is a team-6 card)
