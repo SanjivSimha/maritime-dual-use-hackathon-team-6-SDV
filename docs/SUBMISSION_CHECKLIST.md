@@ -41,6 +41,9 @@ not the rendering workstation. Keep the sources and PDFs together in the submiss
    explicit confirmation and applied recovery. Show 6/0-crew baseline denial rather
    than an invented landing. G4 continues recovery -> launch -> flying, not charging.
    A trip does not imply overload; observation B at minute 12 is nominally 49.5 kW.
+   Show D4 corrective action separately and say it is a controlled input: the declared
+   G3 + G4 charging overlap (106.5 kW) in `tests/engine/test_shedding.py`, run through
+   the real planner (survey throttles G5; SAR defers G3's charge 5 min).
 4. In A show a changed mass and a complete unfamiliar card. Export the JSON bundle
    and JSONL, retain the final hash separately, and run execution replay. Preserve
    compatible code/callback/runtime and assumption registry: those are not serialized.

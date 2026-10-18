@@ -60,8 +60,12 @@ I recomputed the brief's numbers. Several statements in the brief don't hold, an
 
 **Scenario B (loadout G1, G3, G4, G5; 24 °C; 3 kn).**
 - The deficit after the trip appears only when G4 charging (35 kW) and G3 charging (25 kW) overlap, on top of G5 (45 kW): 35 + 25 + 45 + 1.5 = 106.5 kW > 100 kW.
-- **Survey primary:** the vehicle holds depth for the 15-minute pause. That uses its reserve, so it must recharge before re-running the leg. The two charges overlap, so D4 throttles G5 to 8 kW, which leaves 69.5 kW. This matches the brief's narrative.
-- **SAR primary:** G5 is high-weight, so it keeps 45 kW. D4 instead defers G3's charge until G4 finishes (G3's charge can't be interrupted once started, but it can be deferred). The cost is survey delay.
+- **As built, baseline B does not reach that overlap.** The cards declare G4 recovery → launch → flying (no charging after landing), and G3 pause/suspend → holding → rerun (no forced recharge). At the t=720 trip the real D4 sees 49.5 kW against 100 kW and answers no-action. That is the correct answer for these inputs; we do not script an overload into baseline B.
+- **D4 corrective action is demonstrated on a separate, labelled controlled input** (`tests/engine/test_shedding.py`): the same ship and cards, with G4 charging 17–37 min and G3 charging from 32 min declared as schedule inputs, run through the real planner.
+  - **Survey primary:** D4 throttles G5 to low power (37 kW recovered, 45 → 8 kW), leaving 69.5 kW.
+  - **SAR primary:** G5 keeps 45 kW; D4 defers G3's charge by 5 min until G4 finishes (not interruptible once started, but deferrable). The cost is survey delay.
+  - Without the G3 recharge the survey path draws 82.5 kW: no action, shed ladder armed with G5 first and the protected winner excluded.
+- Making the overlap arise in baseline B would need a card change (e.g. G4 recovery followed by charging) agreed with Track A, not a sim script.
 - The two priority files give two different, coherent outcomes, both computed rather than scripted.
 - Power binds in B and cooling can bind in A: the same code names a different binding class in each.
 
@@ -249,7 +253,8 @@ Two tracks run in parallel after a short bootstrap. **Person A (Sanjiv)** owns p
 1. **Scenario B, 90 s**, with the priority file the jury picks:
    - Gauges are steady at minute 0.
    - Minute 8: battery report. The UI shows the two condition sets clashing on the ship-state strip. A decision arrives in under 2 s with the critical path: hold sent, deck clear, speed change. It shows the rationale and the cost to the loser.
-   - Minute 12: genset trip. The shed sequence shows each step's timestamp and what each guest lost.
+   - Minute 12: genset trip. Baseline B: D4 runs and answers no-action (49.5 kW fits under 100 kW). Say so plainly: a trip is not an overload.
+   - Then the **controlled D4 input** (labelled as such): the declared G3 + G4 charging overlap, 106.5 kW > 100 kW. The real planner shows each step's timestamp and what each guest lost: G5 throttled under survey, G3's charge deferred under SAR.
    - Replay with the other priority file and show the diff.
 2. **Scenario A**: the jury picks a card and edits one number in the UI. The verdict shows the binding class, placement plus rejected alternatives, the yes-if list, and "holds with one genset down?". Then flip to A′ (under way) for a not-now-and-when, and to crew 0 for a logical reconfiguration.
 3. **Bonus beat:** load the brief's implied B loadout (G2+G3+G4+G5) and show the governor refusing it on mass and Bay 1.
