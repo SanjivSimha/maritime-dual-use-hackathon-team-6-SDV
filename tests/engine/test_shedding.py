@@ -2,7 +2,7 @@
 
 import time
 
-from shipos.contracts import ActionKind, GuestRuntime, ScheduledMode, Verdict
+from shipos.contracts import ActionKind, Decision, GuestRuntime, ScheduledMode, Verdict
 from shipos.engine import shedding
 from tests.engine.scenario import scenario_b
 
@@ -63,7 +63,48 @@ def test_sar_path_defers_the_vehicle_charge(ship, guests, sar):
     assert d.binding.demand == 106.5 and d.binding.capacity == 100
     (step,) = d.chosen.actions
     assert step.guest == "G3" and step.kind == ActionKind.DEFER and step.delay_min == 5
+    assert step.facts == {"schedule_index": 1, "from_t_s": 1920.0, "to_t_s": 2220.0}
     assert next(c for c in d.costs if c.guest == "G5").amount == 0  # node kept for the rescue
+
+
+def test_defer_metadata_distinguishes_duplicate_modes_and_survives_json(ship, guests, sar):
+    """When a schedule contains multiple entries with the same mode,
+    Action.facts distinguishes them.
+    """
+    base = sar_path()
+    sched = [
+        ScheduledMode(t_s=20 * MIN, mode="charging"),
+        ScheduledMode(t_s=32 * MIN, mode="charging"),
+    ]
+    snap = base.model_copy(
+        update={
+            "guests": {
+                **base.guests,
+                "G3": base.guests["G3"].model_copy(update={"schedule": sched}),
+            }
+        }
+    )
+    d = shedding.plan(ship, guests, snap, sar, protected=frozenset({"G4"}))
+    assert d.verdict == Verdict.SHED
+    (step,) = d.chosen.actions
+    assert step.guest == "G3" and step.kind == ActionKind.DEFER and step.to_mode == "charging"
+    # Defers the first charging slot at 20 min to G4's topping slot at 37 min (delay 17 min)
+    assert step.facts == {"schedule_index": 0, "from_t_s": 20 * MIN, "to_t_s": 37 * MIN}
+    assert step.facts["schedule_index"] == 0
+
+    # In contrast, standard sar_path defers the second slot (index 1) at 32 min
+    d_base = shedding.plan(ship, guests, base, sar, protected=frozenset({"G4"}))
+    (step_base,) = d_base.chosen.actions
+    assert step_base.to_mode == step.to_mode == "charging"
+    assert step_base.facts == {"schedule_index": 1, "from_t_s": 32 * MIN, "to_t_s": 37 * MIN}
+    assert step_base.facts["schedule_index"] == 1
+    assert step.facts != step_base.facts  # cleanly distinguished despite identical mode
+
+    # JSON round-trip preserves exact facts
+    raw = d.model_dump_json()
+    d_restored = Decision.model_validate_json(raw)
+    restored_action = d_restored.chosen.actions[0]
+    assert restored_action.facts == step.facts
 
 
 def test_same_overlap_under_survey_throttles_the_node(ship, guests, survey):

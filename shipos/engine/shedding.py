@@ -58,6 +58,8 @@ class _Move:
     to_mode: str | None = None
     cap_kw: float | None = None  # throttle / standby / off: draw ≤ cap at every instant
     defer_index: int | None = None  # schedule entry shifted
+    from_t_s: float | None = None
+    to_t_s: float | None = None
     delay_s: float = 0.0
     cost: float = 0.0
     factor: float = 1.0  # capability factor kept
@@ -207,6 +209,8 @@ def _moves_for(gid, g, snap, prio, horizon_s, protected) -> list[_Move | None]:
                     ActionKind.DEFER,
                     e.mode,
                     defer_index=i,
+                    from_t_s=e.t_s,
+                    to_t_s=e.t_s + delay,
                     delay_s=delay,
                     cost=w * delay / A("time.s_per_min"),
                 )
@@ -366,6 +370,13 @@ def _relief(guests, snap, m: _Move, before) -> float:
 
 
 def _action(m: _Move, guests, snap, before, t_offset) -> Action:
+    facts: dict[str, str | float] = {}
+    if m.kind == ActionKind.DEFER and m.defer_index is not None:
+        facts = {
+            "schedule_index": m.defer_index,
+            "from_t_s": m.from_t_s if m.from_t_s is not None else 0.0,
+            "to_t_s": m.to_t_s if m.to_t_s is not None else 0.0,
+        }
     return Action(
         guest=m.guest,
         kind=m.kind,
@@ -375,6 +386,7 @@ def _action(m: _Move, guests, snap, before, t_offset) -> Action:
         kw_recovered=round(_relief(guests, snap, m, before), A("display.kw_decimals")),
         delay_min=round(m.delay_s / A("time.s_per_min"), A("display.minute_decimals")),
         t_offset_s=t_offset,
+        facts=facts,
     )
 
 
