@@ -22,13 +22,13 @@ const options = (el, items, selected) => {
 
 // Plain-language labels. Colour classes are always paired with an icon and words.
 const VERDICTS = {
-  yes: ["Accepted", "s-ok", "✓"],
-  yes_if: ["Accepted with conditions", "s-cond", "!"],
-  not_now: ["Not now: deferred", "s-defer", "⏸"],
+  yes: ["Fits", "s-ok", "✓"],
+  yes_if: ["Fits, with conditions", "s-cond", "!"],
+  not_now: ["Not now: try later", "s-defer", "⏸"],
   no: ["Refused", "s-bad", "✕"],
   decided: ["Decided", "s-info", "i"],
-  no_action: ["No action needed", "s-ok", "✓"],
-  shed: ["Shedding plan", "s-cond", "!"],
+  no_action: ["Nothing needs to change", "s-ok", "✓"],
+  shed: ["Power down some equipment", "s-cond", "!"],
 };
 const KINDS = {
   admission: "Equipment admission (D1)", placement: "Placement (D2)",
@@ -122,7 +122,11 @@ function render(data) {
   const snap = state.snapshot;
   const ship = snap.ship;
   $("stateStrip").textContent = `Now (t = ${number(snap.t_s)} s): ${number(ship.speed_kn)} kn · ${ship.course} course · ${ship.noise} · deck ${ship.deck} · ${snap.platform.gensets_online} generator(s) · seawater ${number(snap.env.seawater_c)} °C · ${snap.crew} crew`;
-  $("clock").textContent = `Simulated time ${number(snap.t_s)} s · next second ${state.next_t_s} · this run ends at ${state.horizon_s} s.`;
+  const finished = state.next_t_s >= state.horizon_s;
+  $("clock").textContent = finished
+    ? `Simulated time ${number(snap.t_s)} s · this run has ended. Press Start over for a fresh run.`
+    : `Simulated time ${number(snap.t_s)} s · next second ${state.next_t_s} · this run ends at ${state.horizon_s} s.`;
+  $("forward").disabled = $("step").disabled = finished;
   $("replayStatus").textContent = state.replay
     ? `Replay ${state.replay.byte_identical ? "✓ byte-identical" : "✕ DIFFERS"} · ${state.replay.records} records · hash ${short(state.replay.final_hash)}`
     : `Not verified yet · log hash ${short(state.final_hash)}`;
@@ -372,12 +376,28 @@ function renderSelection() {
 
 // ------------------------------------------------------------------ short explanation
 
+const missionUnderway = () => state.scenario === "B" && state.next_t_s > 0;
+// Recovery is ready and only the operator's confirmation is missing: that is the headline.
+const awaitingConfirmation = () => Boolean(state.execution?.enabled)
+  && (state.crew_policy?.blockers ?? []).includes("confirmation_pending") && state.snapshot.ship.deck === "clear";
+
+// Mode changes the simulation carried out, when the latest update brought no decision of its own.
+function carriedOut() {
+  if (state.decision || !state.execution?.enabled || !lastChange) return [];
+  if (shownDecision()?.t_s > lastChange.from) return [];  // a decision inside the window explains it
+  return Object.entries(lastChange.modes);
+}
+
 function storyVerdict(d) {
+  if (awaitingConfirmation()) return ["Confirm the deck is clear", "s-cond", "!"];
+  if (!d && missionUnderway()) return ["No conflicts so far", "s-ok", "✓"];
   if (!d) return ["Nothing evaluated yet", "s-info", "i"];
   const denied = (d.chosen?.actions ?? []).find(a => a.kind === "deny");
   if (denied) return [`Recovery of ${denied.guest} denied`, "s-bad", "✕"];
+  if (carriedOut().length) return ["Ship updated", "s-ok", "↻"];
   const [label, cls, icon] = VERDICTS[d.verdict] ?? [d.verdict, "s-info", "i"];
   if (d.kind === "admission" && d.verdict === "no") return ["Proposal refused (ship unaffected)", cls, icon];
+  if (d.kind === "arbitration" && d.winner) return [`${state.guests[d.winner]?.name ?? d.winner} goes first`, "s-ok", "▲"];
   return [label, cls, icon];
 }
 
@@ -422,32 +442,36 @@ function recommendText(d) {
 
 // A few words for the collapsed view; the full sentences live in the drop-down.
 function headlineText(d) {
-  if (!d) return state.scenario === "B" ? "Advance time to start the mission." : "Choose equipment and press Evaluate.";
+  if (awaitingConfirmation()) return "Recovery is ready. An operator must confirm the deck is clear before it starts.";
+  if (!d && missionUnderway()) return "Everything fits. Keep advancing, or report the drone battery.";
+  if (!d) return state.scenario === "B" ? "Advance time below to start the mission." : "Pick equipment below, then press “Check if it fits”.";
   const denied = (d.chosen?.actions ?? []).find(a => a.kind === "deny");
-  if (denied) return `Keep ${denied.guest} off the deck.`;
+  if (denied) return `Keep ${denied.guest} off the deck. Reported risk: ${denied.facts?.outcome ?? "not reported"}.`;
+  const done = carriedOut();
+  if (done.length) return done.map(([gid, [from, to]]) => `${state.guests[gid]?.name ?? gid} (${gid}) switched from ${from} to ${to}`).join(". ") + ".";
   const b = d.binding;
   const tightest = b ? RESOURCES[b.cls] ?? b.cls : null;
   const actions = (d.chosen?.actions ?? []).filter(a => a.kind !== "keep");
   if (d.kind === "admission") {
     if (d.verdict === "no") return `Does not fit${tightest ? `: ${tightest} limit` : ""}.`;
-    if (d.verdict === "yes_if") return `Fits after ${actions.length} change(s).`;
+    if (d.verdict === "yes_if") return `Only if ${actions.map(plainAction).join(", and ")}.`;
     if (d.verdict === "not_now") return d.next_window ? `Try again: ${d.next_window}.` : "Try again later.";
-    return "Fits within all limits.";
+    return "Within all eight limits.";
   }
-  if (d.kind === "arbitration" && d.winner) return `${d.winner} goes first; ${d.loser} yields.`;
-  if (d.kind === "shedding") return actions.length ? `Reduce ${actions.length} load(s).` : "All equipment stays on.";
+  if (d.kind === "arbitration" && d.winner) return `${state.guests[d.loser]?.name ?? d.loser} (${d.loser}) waits.`;
+  if (d.kind === "shedding") return actions.length ? `${actions.map(plainAction).join(", and ")}.` : "All equipment stays on.";
   return VERDICTS[d.verdict]?.[0] ?? d.verdict;
 }
 
 function nextText(d) {
   const exec = state.execution;
   const status = exec?.status;
-  if (!d) return state.scenario === "B" ? "Advance time, or report the drone battery, in Run the mission." : "Choose equipment and press Evaluate.";
+  if (!d) return state.scenario === "B" ? "Advance time, or report the drone battery, in Run the mission." : "Pick equipment, then press “Check if it fits”.";
   if (d.kind === "admission") {
     return d.verdict === "no" ? "Nothing to do. The equipment already aboard is not affected." : "Nothing is installed: this demo has no installation step. The result is advice.";
   }
   if ((d.chosen?.actions ?? []).some(a => a.kind === "deny")) return "Nothing will be simulated for this recovery: the engine denied it and accepted the reported risk.";
-  if (!exec?.enabled) return "Recommendation only. To simulate it, turn on “Apply engine actions in the simulation” in Run the mission.";
+  if (!exec?.enabled) return "Recommendation only. To simulate it, turn on “Let the simulation carry out the engine’s actions” in Run the mission.";
   if (!status) return "Execution status was not reported by the server.";
   const pending = status.pending ?? [];
   const blockers = state.crew_policy?.blockers ?? [];
@@ -467,7 +491,7 @@ function digestText(d) {
   const happened = { admission: `Proposed ${d.subject}`, arbitration: "Recovery conflict", shedding: "Power re-check" }[d.kind] ?? (KINDS[d.kind] ?? d.kind);
   const exec = state.execution;
   const pending = exec?.status?.pending ?? [];
-  const confirm = (state.crew_policy?.blockers ?? []).includes("confirmation_pending") && state.snapshot.ship.deck === "clear";
+  const confirm = awaitingConfirmation();
   let next = "Nothing pending";
   if (d.kind === "admission" || !exec?.enabled) next = "Advice only";
   else if ((d.chosen?.actions ?? []).some(a => a.kind === "deny")) next = "Recovery denied";
@@ -486,7 +510,10 @@ function renderStory() {
   words.append(node("strong", label), node("span", headlineText(d), "headline"));
   banner.append(node("span", icon, "icon"), words);
   $("storyVerdict").replaceChildren(banner);
+  const denial = (d?.chosen?.actions ?? []).some(a => a.kind === "deny");
+  renderLimitMeter(awaitingConfirmation() || carriedOut().length || denial ? null : d);
   $("storyDigest").textContent = digestText(d);
+  $("storyTitle").textContent = state.mode === "SAMPLE" ? "ShipOS says (sample fixture, not this session)" : "ShipOS says";
   const dl = $("storyRows");
   dl.replaceChildren();
   const row = (t, ...content) => {
@@ -506,8 +533,31 @@ function renderStory() {
   } else {
     row("What actually changed", state.execution?.enabled ? "Nothing on the simulated ship since the last update." : "Nothing on the ship: results are advice only.");
   }
-  const waiting = state.execution?.enabled && (state.crew_policy?.blockers ?? []).includes("confirmation_pending") && state.snapshot.ship.deck === "clear";
-  $("confirmDeck").classList.toggle("primary", Boolean(waiting));
+  $("confirmDeck").classList.toggle("primary", awaitingConfirmation());
+}
+
+// The one resource that decided the result, as a single bar. Over 100% means it does not fit.
+function renderLimitMeter(d) {
+  const el = $("limitMeter");
+  const b = d?.binding;
+  el.hidden = !b || !(b.capacity > 0);
+  el.replaceChildren();
+  if (el.hidden) return;
+  const ratio = b.demand / b.capacity;
+  const head = node("div", undefined, "lmhead");
+  head.append(node("span", `Tightest: ${RESOURCES[b.cls] ?? b.cls}`), node("b", `${number(b.demand)} / ${number(b.capacity)} ${b.unit}`));
+  const bar = node("div", undefined, `lmbar${ratio > 1 ? " over" : ratio > 0.8 ? " warn" : ""}`);
+  const fill = node("span");
+  fill.style.width = `${Math.min(100, ratio * 100)}%`;
+  bar.append(fill);
+  bar.setAttribute("role", "img");
+  bar.setAttribute("aria-label", `${Math.round(ratio * 100)}% of capacity`);
+  const where = b.corner ? `in its worst case (${b.corner})` : "right now";
+  const unless = ratio > 1 && d.verdict === "yes_if" ? " unless the condition above is met" : "";
+  const foot = node("small", b.cls === "time"
+    ? `Needs ${number(b.demand)} ${b.unit}; only ${number(b.capacity)} ${b.unit} available ${where}.`
+    : `${ratio > 1 ? "Over by" : "Spare"} ${number(Math.abs(b.capacity - b.demand))} ${b.unit} ${where}${unless}.`);
+  el.append(head, bar, foot);
 }
 
 // ----------------------------------------------------------- details below the fold
@@ -524,7 +574,8 @@ function renderEnvironment() {
   if (!env || typeof env !== "object") return;
   const row = (label, value) => el.append(node("dt", label), node("dd", value));
   const c = env.configuration ?? {};
-  row("Weather source", c.source === "scenario" ? "Scenario default (no cached forecast)" : c.source ?? "not reported");
+  const label = [...$("environment").options].find(o => o.value === c.source)?.textContent;
+  row("Weather source", label ?? c.source ?? "not reported");
   if (c.source && c.source !== "scenario") {
     row("Scenario start", `${c.scenario_start ?? "not reported"}${c.timezone_offset_min == null ? "" : ` (${tzLabel(c.timezone_offset_min)})`}`);
     row("Layered water / stale allowed", `${c.layered_water ? "yes" : "no"} / ${c.allow_stale ? "yes" : "no"}`);
@@ -724,6 +775,24 @@ function renderGauges() {
   }));
 }
 
+// Headline wording for one action, in everyday words; the rows below keep the exact terms.
+const PLAIN = {
+  keep: "stays as it is", throttle: "runs at reduced power", standby: "goes to standby",
+  shed: "is switched off", remove: "is taken off the ship", move: "moves to another spot",
+  defer: "waits", pause: "pauses", suspend: "is suspended", proceed: "goes ahead",
+  deny: "is refused", reserve: "has capacity held for it", retask: "is given another task",
+};
+function plainAction(a) {
+  const who = `${state.guests[a.guest]?.name ?? a.guest} (${a.guest})`;
+  const when = a.when === "degraded" ? " if a generator fails" : "";
+  if (a.kind === "interlock") {
+    const [og, om] = (a.other ?? "").split(".");
+    const other = `${state.guests[og]?.name ?? og}${om ? ` is ${om}` : ""}`;
+    return `${who} does not ${a.to_mode ?? "run"} while ${other}${when}`;
+  }
+  return `${who} ${PLAIN[a.kind] ?? a.kind}${when}`;
+}
+
 function actionText(a) {
   const when = a.when === "degraded" ? " (only with one generator down)" : "";
   const delay = a.delay_min ? ` after ${number(a.delay_min)} min` : "";
@@ -764,7 +833,7 @@ function renderDecision(d) {
     banner.append(node("span", unavailable ? "—" : "i", "icon"));
     const text = node("div");
     text.append(node("h3", unavailable ? "Result unavailable" : "No current decision"),
-      node("p", unavailable ? state.notice : "Choose equipment and press Evaluate to see whether it fits."));
+      node("p", unavailable ? state.notice : "Pick equipment, then press “Check if it fits”."));
     banner.append(text);
     el.append(banner);
     return;
@@ -846,7 +915,12 @@ function fillCardJson() {
 
 // ------------------------------------------------------------------------- controls
 
+const TITLES = {
+  evaluate: "Can this equipment come aboard?",
+  mission: "Who goes first when resources run short?",
+};
 function selectTab(name) {
+  $("pageTitle").textContent = TITLES[name];
   for (const tab of ["evaluate", "mission"]) {
     const on = tab === name;
     $(`tab-${tab}`).setAttribute("aria-selected", String(on));

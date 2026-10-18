@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ShipOS · Resource governor</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/ship.js" defer></script>
   <script src="/static/ship3d.js" type="module"></script>
@@ -10,163 +11,183 @@
 </head>
 <body>
   <a class="skip" href="#tasks">Skip to the controls</a>
-  <header class="topbar">
-    <div class="brand">ShipOS <span>Resource governor</span></div>
-    <p class="provenance"><span id="modeBadge" class="tag" title="Where results come from. Not a safety approval; nothing is executed unless simulated execution is on.">LIVE</span>
-      <span id="provenanceText">Results computed by the engine for this session · recommendations only, nothing is executed</span></p>
-  </header>
-
-  <section class="context" aria-label="Session settings">
-    <label>Scenario<select id="scenario"><option value="A">A · In port, add equipment</option><option value="B">B · At sea, mission timeline</option></select></label>
-    <label>Mission priority<select id="priority"></select></label>
-    <label>Crew aboard<select id="crew"><option>14</option><option>6</option><option>0</option></select></label>
-    <label>Results from<select id="mode"><option value="LIVE">Live engine</option><option value="SAMPLE">Sample fixtures (D3/D4 preview)</option></select></label>
-    <button id="reset" class="btn quiet" type="button">Start over</button>
-  </section>
-
-  <main class="stage">
-    <section class="shippanel" aria-labelledby="shipTitle">
-      <div class="shiphead">
-        <h2 id="shipTitle">Your ship <small>schematic, not to scale</small></h2>
-        <div class="viewtoggle" role="group" aria-label="Ship view">
-          <button id="viewTop" type="button" aria-pressed="true">Top view</button>
-          <button id="viewSide" type="button" aria-pressed="false">Side view</button>
-          <button id="view3d" type="button" aria-pressed="false">3D</button>
-        </div>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15h18l-2.5 5h-13zM7 15V9h5v6M12 11h5v4M9 9V5"/></svg>
+        <span>ShipOS</span>
       </div>
-      <svg id="ship" viewBox="0 0 1000 440" role="group" aria-label="Ship areas and equipment. Select a piece of equipment for details."></svg>
-      <div id="ship3d" class="ship3d" role="img" aria-label="3D ship schematic. Drag to rotate, scroll to zoom. The top and side views and the text list carry the same information." hidden></div>
-      <p id="ship3dNote" class="hint" hidden>3D schematic, not to scale. Drag to rotate, scroll to zoom, hover for details. Below deck: generators, the two mission power lines and the cooling loop, tinted green / amber / red by load; the limiting part pulses.</p>
-      <p id="stateStrip" class="strip"></p>
-      <div id="legend" class="legend" aria-label="Legend"></div>
-      <article id="selection" class="selection" aria-live="polite" hidden></article>
-      <details class="equiplist">
-        <summary>Equipment aboard (text list)</summary>
-        <ul id="guestStates" class="aboard"></ul>
-      </details>
+      <nav class="tabs" role="tablist" aria-label="Tasks">
+        <button id="tab-evaluate" role="tab" aria-selected="true" aria-controls="evaluate" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add equipment</button>
+        <button id="tab-mission" role="tab" aria-selected="false" aria-controls="mission" type="button" tabindex="-1">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>Run the mission</button>
+      </nav>
+      <p class="provenance"><span id="modeBadge" class="tag" title="Where results come from. Not a safety approval; nothing is executed unless simulated execution is on.">LIVE</span>
+        <span id="provenanceText">Results computed by the engine for this session · recommendations only, nothing is executed</span></p>
+    </header>
+
+    <section class="hero" aria-labelledby="pageTitle">
+      <div class="heroText">
+        <p class="kicker">ShipOS stops a ship's power, cooling and deck space from being overbooked.</p>
+        <h1 id="pageTitle">Can this equipment come aboard?</h1>
+      </div>
+      <div class="context" aria-label="Session settings">
+        <label>Situation<select id="scenario"><option value="A">In port, adding equipment</option><option value="B">At sea, running a mission</option></select></label>
+        <label>Mission first<select id="priority"></select></label>
+        <label>Crew<select id="crew"><option>14</option><option>6</option><option>0</option></select></label>
+        <button id="reset" class="btn quiet" type="button">Start over</button>
+      </div>
     </section>
 
-    <aside id="tasks" class="side">
-      <div class="tabs" role="tablist" aria-label="Tasks">
-        <button id="tab-evaluate" role="tab" aria-selected="true" aria-controls="evaluate" type="button">Add equipment</button>
-        <button id="tab-mission" role="tab" aria-selected="false" aria-controls="mission" type="button" tabindex="-1">Run the mission</button>
-      </div>
-
-      <section id="evaluate" class="panel" role="tabpanel" aria-labelledby="tab-evaluate">
-        <form id="admit">
-          <label>Equipment to add<select id="card"></select></label>
-          <label>Body mass (t)<input id="value" type="number" min="0" step="any" required></label>
-          <button class="btn primary" type="submit">Evaluate</button>
-        </form>
-        <p class="hint">Evaluating never installs anything. Change the mass to test a variant.</p>
-        <details id="advanced" class="advanced">
-          <summary>Advanced: import a complete card (JSON)</summary>
-          <form id="importCard">
-            <p class="hint">Edit any field or give new equipment its own ID. Use resolved numbers; <code>$</code> references and replacing installed equipment are rejected.</p>
-            <label>Card JSON<textarea id="cardJson" rows="10" spellcheck="false" required></textarea></label>
-            <div class="row">
-              <button id="loadCardJson" class="btn quiet" type="button">Load selected card</button>
-              <button class="btn" type="submit">Validate and evaluate</button>
-            </div>
-          </form>
-        </details>
-      </section>
-
-      <section id="mission" class="panel" role="tabpanel" aria-labelledby="tab-mission" hidden>
-        <p id="clock" class="hint"></p>
-        <div class="row">
-          <label class="inline">Advance<input id="ticks" type="number" min="1" max="120" step="1" value="60">s</label>
-          <button id="forward" class="btn primary" type="button">Advance time</button>
-          <button id="step" class="btn quiet" type="button">+1 s</button>
-        </div>
-        <div class="row">
-          <label class="inline">Drone battery<input id="battery" type="number" min="0" max="100" step="any" value="18">%</label>
-          <button class="btn" data-event="battery_report" type="button">Report battery</button>
-          <button class="btn" data-event="genset_trip" type="button">Trip a generator</button>
-        </div>
-        <label class="inline switch"><input id="execution" type="checkbox" data-capability="execution" disabled> Apply engine actions in the simulation <small>(fresh run)</small></label>
-        <div class="row">
-          <label class="inline">Confirmed by<input id="confirmBy" type="text" maxlength="100" value="deck officer" data-capability="confirm_deck" disabled></label>
-          <button id="confirmDeck" class="btn" type="button" data-capability="confirm_deck" disabled>Confirm deck is clear</button>
-        </div>
-        <p class="hint">Confirming records the operator's statement. It does not clear the deck.</p>
-        <ul id="capabilityNotes" class="capnotes" aria-label="Unavailable controls"></ul>
-        <details class="advanced">
-          <summary>More: ask the engine directly (D3 / D4)</summary>
-          <p class="hint">Read-only questions about the current snapshot; not recorded in the replay.</p>
-          <div class="row">
-            <button class="btn quiet" data-op="arbitration" type="button">Who goes first? (D3)</button>
-            <button class="btn quiet" data-op="shedding" type="button">Degradation plan (D4)</button>
+    <main class="stage">
+      <section class="shippanel" aria-labelledby="shipTitle">
+        <div class="shiphead">
+          <h2 id="shipTitle">Your ship <small>schematic, not to scale · bow to the right</small></h2>
+          <div class="viewtoggle" role="group" aria-label="Ship view">
+            <button id="viewTop" type="button" aria-pressed="true">Top</button>
+            <button id="viewSide" type="button" aria-pressed="false">Side</button>
+            <button id="view3d" type="button" aria-pressed="false">3D</button>
           </div>
-        </details>
-        <details id="envAdvanced" class="advanced">
-          <summary>Advanced: weather inputs</summary>
-          <p class="hint">Applying starts a fresh run and archives the previous evidence. Only bundled caches are offered; nothing is downloaded. Installation windows are conditional planning eligibility only: not permission, and nothing is installed.</p>
-          <form id="envForm" class="envform">
-            <label>Weather source<select id="environment" data-capability="environment" disabled>
-              <option value="scenario">Scenario default (no cached forecast)</option>
-              <option value="strait_of_sicily">Cached forecast: Strait of Sicily</option></select></label>
-            <fieldset id="envCache" class="cachefields">
-              <label>Scenario start (local)<input id="envStart" type="datetime-local" value="2026-10-17T08:00" step="60"></label>
-              <label>Time zone offset (min from UTC)<input id="envTz" type="number" min="-840" max="840" step="15" value="120"></label>
-              <label class="inline"><input id="envLayered" type="checkbox"> Layered water</label>
-              <label class="inline"><input id="envStale" type="checkbox"> Allow a stale cache</label>
-            </fieldset>
-            <button id="envApply" class="btn" type="submit" data-capability="environment" disabled>Apply (fresh run)</button>
-          </form>
-          <p id="environmentStatus" class="hint"></p>
-          <dl id="environmentView" class="status"></dl>
-        </details>
-      </section>
-      <p id="error" class="error" role="alert"></p>
-
-      <section id="story" class="story" aria-labelledby="storyTitle" aria-live="polite">
-        <h2 id="storyTitle">What is going on</h2>
-        <div id="storyVerdict"></div>
-        <details id="storyMore" class="storymore">
-          <summary id="storyDigest">Details</summary>
-          <dl id="storyRows" class="storyrows"></dl>
-        </details>
-        <a class="more" href="#details">Full result, mission status and evidence ↓</a>
-      </section>
-    </aside>
-  </main>
-
-  <section id="details" class="band split" aria-label="Details">
-    <section aria-labelledby="resultTitle">
-      <h2 id="resultTitle">Full result</h2>
-      <article id="decision"></article>
-    </section>
-    <div class="stack">
-      <section aria-labelledby="statusTitle">
-        <h2 id="statusTitle">Mission status</h2>
-        <dl id="missionStatus" class="status"></dl>
-      </section>
-      <section class="record" aria-label="Session record">
-        <h2>Session record</h2>
-        <div class="row">
-          <button id="replay" class="btn quiet" type="button">Verify by replaying</button>
-          <a id="export" class="btn link" download>Export evidence</a>
-          <a id="jsonl" class="btn link" download>Log (JSONL)</a>
         </div>
-        <p id="replayStatus" class="hint mono" role="status"></p>
-        <details id="previousRuns" hidden>
-          <summary>Previous runs (<span id="previousCount">0</span>)</summary>
-          <ol id="previousList" class="runs"></ol>
+        <svg id="ship" viewBox="0 0 1000 440" role="group" aria-label="Ship areas and equipment. Select a piece of equipment for details."></svg>
+        <div id="ship3d" class="ship3d" role="img" aria-label="3D ship schematic. Drag to rotate, scroll to zoom. The top and side views and the text list carry the same information." hidden></div>
+        <p id="ship3dNote" class="hint" hidden>3D schematic, not to scale. Drag to rotate, scroll to zoom, hover for details. Below deck: generators, the two mission power lines and the cooling loop, tinted green / amber / red by load; the limiting part pulses.</p>
+        <div id="legend" class="legend" aria-label="Legend"></div>
+        <p id="stateStrip" class="strip"></p>
+        <article id="selection" class="selection" aria-live="polite" hidden></article>
+        <details class="equiplist">
+          <summary>Equipment aboard (text list)</summary>
+          <ul id="guestStates" class="aboard"></ul>
         </details>
       </section>
-    </div>
-  </section>
 
-  <section class="band" aria-labelledby="resourcesTitle">
-    <h2 id="resourcesTitle">Ship resources <small>now, for installed equipment (a proposal's limit is checked separately, in its worst case)</small></h2>
-    <div id="gauges" class="gauges" aria-label="Eight resource classes"></div>
-  </section>
+      <aside id="tasks" class="side">
+        <section id="story" class="story" aria-labelledby="storyTitle" aria-live="polite">
+          <h2 id="storyTitle">ShipOS says</h2>
+          <div id="storyVerdict"></div>
+          <div id="limitMeter" class="limitmeter" hidden></div>
+          <details id="storyMore" class="storymore">
+            <summary id="storyDigest">Details</summary>
+            <dl id="storyRows" class="storyrows"></dl>
+          </details>
+        </section>
+        <section id="evaluate" class="panel" role="tabpanel" aria-labelledby="tab-evaluate">
+          <h2 class="step">Pick equipment to add</h2>
+          <form id="admit">
+            <label>Equipment<select id="card"></select></label>
+            <label>Mass (t)<input id="value" type="number" min="0" step="any" required></label>
+            <button class="btn primary" type="submit">Check if it fits</button>
+          </form>
+          <p class="hint">Checking never installs anything. Change the mass to try a variant.</p>
+          <details id="advanced" class="advanced">
+            <summary>Import a complete equipment card (JSON)</summary>
+            <form id="importCard">
+              <p class="hint">Edit any field or give new equipment its own ID. Use resolved numbers; <code>$</code> references and replacing installed equipment are rejected.</p>
+              <label>Card JSON<textarea id="cardJson" rows="10" spellcheck="false" required></textarea></label>
+              <div class="row">
+                <button id="loadCardJson" class="btn quiet" type="button">Load selected card</button>
+                <button class="btn" type="submit">Validate and check</button>
+              </div>
+            </form>
+          </details>
+        </section>
 
-  <section class="band" aria-labelledby="logTitle">
-    <h2 id="logTitle">Decision log <small>newest first</small></h2>
-    <ol id="log" class="log"></ol>
-  </section>
-  <footer id="transport" class="foot">HTTP connected · WebSocket connecting</footer>
+        <section id="mission" class="panel" role="tabpanel" aria-labelledby="tab-mission" hidden>
+          <h2 class="step">Play the mission forward</h2>
+          <p id="clock" class="hint"></p>
+          <div class="row">
+            <label class="inline">Advance<input id="ticks" type="number" min="1" max="120" step="1" value="60">s</label>
+            <button id="forward" class="btn primary" type="button">Advance time</button>
+            <button id="step" class="btn quiet" type="button">+1 s</button>
+          </div>
+          <h3 class="sub">Make something happen</h3>
+          <div class="row">
+            <label class="inline">Drone battery<input id="battery" type="number" min="0" max="100" step="any" value="18">%</label>
+            <button class="btn" data-event="battery_report" type="button">Report battery</button>
+            <button class="btn" data-event="genset_trip" type="button">Trip a generator</button>
+          </div>
+          <label class="inline switch"><input id="execution" type="checkbox" data-capability="execution" disabled> Let the simulation carry out the engine's actions <small>(fresh run)</small></label>
+          <div class="row">
+            <label class="inline">Confirmed by<input id="confirmBy" type="text" maxlength="100" value="deck officer" data-capability="confirm_deck" disabled></label>
+            <button id="confirmDeck" class="btn" type="button" data-capability="confirm_deck" disabled>Confirm deck is clear</button>
+          </div>
+          <p class="hint">Confirming records the operator's statement. It does not clear the deck.</p>
+          <ul id="capabilityNotes" class="capnotes" aria-label="Unavailable controls"></ul>
+          <details class="advanced">
+            <summary>Ask the engine directly (D3 / D4)</summary>
+            <p class="hint">Read-only questions about the current snapshot; not recorded in the replay.</p>
+            <div class="row">
+              <button class="btn quiet" data-op="arbitration" type="button">Who goes first? (D3)</button>
+              <button class="btn quiet" data-op="shedding" type="button">Degradation plan (D4)</button>
+            </div>
+          </details>
+          <details id="envAdvanced" class="advanced">
+            <summary>Weather inputs</summary>
+            <p class="hint">Applying starts a fresh run and archives the previous evidence. Only bundled caches are offered; nothing is downloaded. Installation windows are conditional planning eligibility only: not permission, and nothing is installed.</p>
+            <form id="envForm" class="envform">
+              <label>Weather source<select id="environment" data-capability="environment" disabled>
+                <option value="scenario">Scenario default (no cached forecast)</option>
+                <option value="strait_of_sicily">Cached forecast: Strait of Sicily</option></select></label>
+              <fieldset id="envCache" class="cachefields">
+                <label>Scenario start (local)<input id="envStart" type="datetime-local" value="2026-10-17T08:00" step="60"></label>
+                <label>Time zone offset (min from UTC)<input id="envTz" type="number" min="-840" max="840" step="15" value="120"></label>
+                <label class="inline"><input id="envLayered" type="checkbox"> Layered water</label>
+                <label class="inline"><input id="envStale" type="checkbox"> Allow a stale cache</label>
+              </fieldset>
+              <button id="envApply" class="btn" type="submit" data-capability="environment" disabled>Apply (fresh run)</button>
+            </form>
+            <p id="environmentStatus" class="hint"></p>
+            <dl id="environmentView" class="status"></dl>
+          </details>
+        </section>
+        <p id="error" class="error" role="alert"></p>
+
+      </aside>
+    </main>
+
+    <section class="band duo" aria-label="Ship resources and decisions">
+      <section class="card" aria-labelledby="resourcesTitle">
+        <h2 id="resourcesTitle">Ship resources <small>how full each one is right now</small></h2>
+        <div id="gauges" class="gauges" aria-label="Eight resource classes"></div>
+        <p class="note">Bars show installed equipment now. A proposal is checked separately, in its worst case.</p>
+      </section>
+      <section class="card" aria-labelledby="logTitle">
+        <h2 id="logTitle">Decisions so far <small>newest first</small></h2>
+        <ol id="log" class="log"></ol>
+      </section>
+    </section>
+
+    <section id="details" class="band working" aria-labelledby="workingTitle">
+      <h2 id="workingTitle" class="bandtitle">The engine's working <small>full result, mission status, evidence and replay</small></h2>
+      <div class="split">
+        <section class="card" aria-labelledby="resultTitle">
+          <h2 id="resultTitle">Full result</h2>
+          <article id="decision"></article>
+        </section>
+        <div class="stack">
+          <section class="card" aria-labelledby="statusTitle">
+            <h2 id="statusTitle">Mission status</h2>
+            <dl id="missionStatus" class="status"></dl>
+          </section>
+          <section class="card record" aria-label="Session record">
+            <h2>Session record</h2>
+            <label class="inline">Results from<select id="mode"><option value="LIVE">Live engine</option><option value="SAMPLE">Sample fixtures (D3/D4 preview)</option></select></label>
+            <div class="row">
+              <button id="replay" class="btn quiet" type="button">Verify by replaying</button>
+              <a id="export" class="btn link" download>Export evidence</a>
+              <a id="jsonl" class="btn link" download>Log (JSONL)</a>
+            </div>
+            <p id="replayStatus" class="hint mono" role="status"></p>
+            <details id="previousRuns" hidden>
+              <summary>Previous runs (<span id="previousCount">0</span>)</summary>
+              <ol id="previousList" class="runs"></ol>
+            </details>
+          </section>
+        </div>
+      </div>
+    </section>
+    <footer id="transport" class="foot">HTTP connected · WebSocket connecting</footer>
+  </div>
 </body>
 </html>

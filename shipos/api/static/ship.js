@@ -60,6 +60,21 @@ function slotRects(view, slots) {
   return rects;
 }
 
+// Hatched fills: blue for the selected item, amber for a proposal that is not aboard yet.
+function hatch(id, base, stripe) {
+  const p = svgEl("pattern", {id, width: 10, height: 10, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)"});
+  p.append(svgEl("rect", {width: 10, height: 10, fill: base}), svgEl("line", {x1: 0, y1: 0, x2: 0, y2: 10, stroke: stripe, "stroke-width": 4}));
+  return p;
+}
+
+// A rounded label chip sized to its text (no font metrics needed at this size).
+function pill(x, y, text, cls = "s-arealabel") {
+  const g = svgEl("g", {class: "s-pill"});
+  g.append(svgEl("rect", {x, y, width: text.length * 6.1 + 16, height: 20, rx: 10}));
+  g.append(svgEl("text", {x: x + 8, y: y + 14, class: cls}, text));
+  return g;
+}
+
 const shortName = (name, n = 22) => (name.length > n ? `${name.slice(0, n - 1)}…` : name);
 
 // items: [{key, gid, part, slotId, name, line2, kind: installed|proposed|ship, roles: [...], dim}]
@@ -68,6 +83,9 @@ function drawShip(svg, view, ship, deck, items, highlightSlots, selected, onSele
   svg.replaceChildren();
   svg.dataset.view = view;
   svg.setAttribute("viewBox", A.viewBox);
+  const defs = svgEl("defs");
+  defs.append(hatch("hatch-selected", "#2f6bff", "rgba(255,255,255,.16)"), hatch("hatch-proposed", "#fff4dd", "rgba(214,140,20,.22)"));
+  svg.append(defs);
   svg.append(svgEl("path", {d: A.hull, class: "s-hull"}));
   if (A.water) svg.append(svgEl("line", {x1: 10, x2: 990, y1: A.water, y2: A.water, class: "s-water"}));
   for (const [text, x, y] of A.labels) svg.append(svgEl("text", {x, y, class: "s-axis"}, text));
@@ -77,8 +95,8 @@ function drawShip(svg, view, ship, deck, items, highlightSlots, selected, onSele
   const fixed = (key, label, extra = "") => {
     const [x, y, w, h] = A[key];
     const g = svgEl("g", {class: `s-area s-fixed ${extra}`});
-    g.append(svgEl("rect", {x, y, width: w, height: h, rx: 6}));
-    g.append(svgEl("text", {x: x + 6, y: y + 16, class: "s-arealabel"}, label));
+    g.append(svgEl("rect", {x, y, width: w, height: h, rx: 10}));
+    if (label) g.append(pill(x + 6, y + 6, label));
     svg.append(g);
     return g;
   };
@@ -97,8 +115,8 @@ function drawShip(svg, view, ship, deck, items, highlightSlots, selected, onSele
     const cls = ["s-area", "s-slot"];
     if (highlightSlots.has(slot.id) || highlightSlots.has(slot.group)) cls.push("s-limit");
     const g = svgEl("g", {class: cls.join(" ")});
-    g.append(svgEl("rect", {x: r.x, y: r.y, width: r.w, height: r.h, rx: 6}));
-    if (slot.kind !== "mast") g.append(svgEl("text", {x: r.x + 6, y: r.y + 15, class: "s-arealabel"}, r.label));
+    g.append(svgEl("rect", {x: r.x, y: r.y, width: r.w, height: r.h, rx: 10}));
+    if (slot.kind !== "mast") g.append(pill(r.x + 6, r.y + 5, r.label));
     if (highlightSlots.has(slot.id)) g.append(svgEl("text", {x: r.x + 6, y: r.y + r.h - 6, class: "s-limittext"}, "◆ limit"));
     svg.append(g);
   }
@@ -110,19 +128,19 @@ function drawShip(svg, view, ship, deck, items, highlightSlots, selected, onSele
     const r = rects[slotId];
     if (!r) continue;
     const mast = r.slot.kind === "mast";
-    const rows = mast ? 1 : Math.max(1, Math.min(list.length, Math.floor((r.h - 20) / 40)));
+    const rows = mast ? 1 : Math.max(1, Math.min(list.length, Math.floor((r.h - 30) / 40)));
     list.forEach((it, i) => {
-      const th = mast ? r.h : Math.min(52, (r.h - 22) / rows - 4);
+      const th = mast ? r.h : Math.min(52, (r.h - 32) / rows - 4);
       const tw = mast ? r.w : r.w - 12;
       const x = mast ? r.x : r.x + 6;
-      const y = mast ? r.y : r.y + 20 + (i % rows) * (th + 4);
+      const y = mast ? r.y : r.y + 30 + (i % rows) * (th + 4);
       const cls = ["s-token", `s-${it.kind}`, ...it.roles.map(role => `r-${role.key}`)];
       if (it.dim) cls.push("s-dim");
       if (selected && selected === it.gid) cls.push("s-selected");
       const g = svgEl("g", {class: cls.join(" ")});
       const label = `${it.name}${it.gid ? ` (${it.gid})` : ""}: ${it.line2}${it.roles.length ? ". " + it.roles.map(r => r.text).join(". ") : ""}`;
       g.append(svgEl("title", {}, label));
-      g.append(svgEl("rect", {x, y, width: tw, height: th, rx: 5}));
+      g.append(svgEl("rect", {x, y, width: tw, height: th, rx: mast ? 6 : 8}));
       if (mast) {
         g.append(svgEl("text", {x: x + tw / 2, y: y + th / 2 + 4, "text-anchor": "middle", class: "s-tokenid"}, it.gid ?? it.name.split(" ").pop()));
       } else {
