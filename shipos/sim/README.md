@@ -211,7 +211,7 @@ uv run python -c "from pathlib import Path; from shipos.sim.log import verify_js
 
 Observed on Python 3.13.5: two independent 721-tick runs produced identical 722-line
 logs, and replay reproduced every byte. Final hash:
-`3e43733a289dabdbd77b2cda1bbea4cc176f153bf9e6eb101e205b7b691712d7`.
+`ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28`.
 The full repository suite passed 168 tests; lint, formatting, the numeric-literal
 guard and the B2 ownership check also passed.
 

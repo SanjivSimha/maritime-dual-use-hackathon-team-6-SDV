@@ -1,0 +1,30 @@
+# Team 6 invention (not in Annex B): G7 Survivor-care medical module.
+# The only card that sets safety_critical, `requires` and a motor-start peak; every number is an
+# assumption ("$<id>", data/assumptions/), because no Annex value exists for it.
+id: G7
+name: Survivor-care medical module
+mass_t: "$guests.g7.mass_t"
+cooling: water                     # bay manifold (A.2)
+preferred: [bay1_half]
+allowed: [bay1_half, bay2]
+modes:
+  - {name: standby, tier: standby, power_kw: "$guests.g7.standby_kw", capability_factor: 0}
+  - name: treating                 # warming, oxygen concentrators, monitors for rescued people
+    power_kw: "$guests.g7.treating_kw"
+    peak_kw: "$guests.g7.compressor_peak_kw"
+    peak_s: "$guests.g7.compressor_peak_s"
+  - {name: "off", tier: "off", power_kw: 0, capability_factor: 0}
+initial_mode: standby
+requires:
+  - {target: G5, reason: "telemedicine to a shore hospital runs over the comms node's SATCOM"}
+safety_critical: true              # never shed automatically; a human confirms where crew exists
+data:
+  - {link: satcom, mbps: "$guests.g7.satcom_mbps"}
+  - {link: backbone, mbps: "$guests.g7.backbone_mbps"}
+compute: {cores: "$compute.g7.cores", mem_gb: "$compute.g7.mem_gb"}
+capability:
+  name: keeps rescued people alive until a shore hospital
+  value_by_mission: {rescue: high, disaster_relief: high, patrol: medium}
+  default: low
+  tags: [sar, medical]
+installation: {where: port_only, people: "$guests.g7.install_people", hours: "$guests.g7.install_h"}

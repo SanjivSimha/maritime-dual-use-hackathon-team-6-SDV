@@ -18,12 +18,12 @@ make demo      # offline: dashboard at http://127.0.0.1:8000/
 On Windows without `make`, use `.\tools\demo.ps1 -Prepare` once, then `.\tools\demo.ps1`. The
 decision engine is never mocked: the dashboard, the simulator and the tests all call the same
 `shipos.engine` functions. `make check` runs lint, the no-magic-numbers guardrail and the full test suite
-(481 passed at submission).
+(491 passed at submission).
 
 ## Architecture
 
 ```
- data/ship  (Annex A)      data/guests  G1–G6 cards        data/priorities  (swappable)
+ data/ship  (Annex A)      data/guests  G1–G7 cards        data/priorities  (swappable)
  data/assumptions (D6)     schema/guest_manifest.json      data/envelopes   (A.10)
             │                         │                              │
             └──────────── frozen contracts (shipos/contracts.py) ────┘
@@ -60,7 +60,7 @@ binding `ConstraintResult` (resource, capacity, demand, corner, contributors). T
 
 ## What it does on the reference scenarios
 
-The full log is in `deliverables/05_validation/` (48/48 checks, real engine).
+The full log is in `deliverables/05_validation/` (54/54 checks, real engine).
 
 - **A** (G1, G2, G5 installed; jury card G4): *yes-if* in about 50 ms. "At slow speed in 30 °C water with
   one genset down, guests need 101.5 kW against 100 kW usable … Admit G4 if G2's winch waits
@@ -78,13 +78,21 @@ The full log is in `deliverables/05_validation/` (48/48 checks, real engine).
 - **Determinism**: same seed and timeline give the same SHA-256 log hash. Export and *Verify by replaying*
   re-executes the engine byte for byte.
 
-## Our card: G6 Survivor-care medical module
+## Our cards: G6 Towed passive acoustic array (and G7)
 
-`data/guests/G6.yaml` is a 2.4 t water-cooled 10-ft module drawing 3 kW standby and 18 kW while treating, with a
-10 kW compressor-start peak for 20 s. It **requires G5** (telemedicine over SATCOM) and is
-**safety-critical**. It exercises the B.0 fields that no Annex card sets. Without G5 aboard it is
-refused ("G6 requires G5 …"). In Scenario A it goes to the free Bay 1 half. During a genset trip
-D4 sheds around it ("G6 keeps treating").
+`data/guests/G6.yaml` is the team's original card: a civil towed hydrophone array for
+marine-mammal and ambient-noise monitoring. It is a 2.5 t drum-and-winch module in a Bay 1 half or Bay 2.
+It draws 15 kW while deploying or recovering over the stern ramp and 4 kW while listening.
+Listening needs 4–6 kn, a steady course, quiet, and no deck machinery. It excludes G2's winch,
+and a transect can be paused for 30 min without being re-run. All 17 numbers are invented
+assumptions (`data/assumptions/g6.yaml`). In Scenario A it is admitted onto the free Bay 1 half.
+With G2, G3 and G4 aboard it is refused ("bay1 holds 2 units but G3 and G6 need 3"). At sea the
+answer is *not now: port only, 3 people, 4 h*.
+
+`data/guests/G7.yaml` is a second invented card that exercises the B.0 fields no other card sets:
+a survivor-care medical module that is **safety-critical**, **requires G5** (telemedicine over SATCOM)
+and has a 10 kW compressor-start peak. Without G5 it is refused ("G7 requires G5 …"), and D4 never
+sheds it ("G7 keeps treating").
 
 ## Limitations
 

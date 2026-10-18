@@ -36,7 +36,7 @@ Close: **Session record → Verify by replaying** re-executes the engine and com
 ## Scenario A: the jury's card
 
 1. **Start over** → **Add equipment** → Situation "In port, adding equipment" (G1, G2, G5 installed).
-2. Choose the jury's card under **Equipment** (G3, G4, or our G6) and **Check if it fits**.
+2. Choose the jury's card under **Equipment** (G3, G4, or our G6 / G7) and **Check if it fits**.
    Point to the verdict, the **binding resource**, the placement on the schematic, "holds with one
    genset down: yes/no", and for *yes-if* the ranked list under *Conditions*.
 3. **Jury changes one number:**
@@ -54,13 +54,15 @@ Close: **Session record → Verify by replaying** re-executes the engine and com
 |---|---|---|
 | G4 | yes-if: G2 winch waits while G4 charges, one genset down | power 101.5 / 100 kW (slow, 30 °C, 1 genset) |
 | G3 | yes-if: displace G5 | deck.bay1 3 / 2 units |
-| G6 | yes, placed on Bay 1b | Bay 1 now full |
-| G6 without G5 aboard | no | G6 requires G5 (telemedicine over SATCOM) |
+| G6 (acoustic array) | yes, placed on Bay 1b | Bay 1 now full |
+| G7 (survivor care) | yes, placed on Bay 1b | Bay 1 now full |
+| G7 without G5 aboard | no | G7 requires G5 (telemedicine over SATCOM) |
 
 | Installed G2, G3, G4 | Verdict | Binding |
 |---|---|---|
 | G1 | no | mass 10.08 / 10 t |
 | G5 | no | deck.bay2 2 / 1 units |
+| G6 | no | deck.bay1 3 / 2 units (cheapest fix, displacing G2, costs as much as G6 returns) |
 
 ## If something goes wrong
 
