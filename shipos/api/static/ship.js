@@ -100,9 +100,8 @@ function drawShip(svg, view, ship, deck, items, highlightSlots, selected, onSele
     svg.append(g);
     return g;
   };
-  fixed("flight", `Flight deck · ${deck.flight_deck_in_use ? "in use" : "idle"} · deck ${deck.deck}`,
-    deck.flight_deck_in_use ? "s-active" : "");
-  fixed("ramp", `Ramp · ${deck.ramp_in_use ? "in use" : "idle"}`, deck.ramp_in_use ? "s-active" : "");
+  fixed("flight", `Flight deck${deck.flight_deck_in_use ? " · in use" : ""}`, deck.flight_deck_in_use ? "s-active" : "");
+  fixed("ramp", `Ramp${deck.ramp_in_use ? " · in use" : ""}`, deck.ramp_in_use ? "s-active" : "");
   const bridge = fixed("bridge", "");
   const [bx, by, bw, bh] = A.bridge;
   bridge.append(svgEl("text", {x: bx + 6, y: by + bh - 6, class: "s-arealabel"}, "Bridge / mast"));

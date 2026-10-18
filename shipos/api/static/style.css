@@ -41,6 +41,7 @@ p { margin: 6px 0; }
 code, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 small { font-weight: 400; color: var(--slate); }
 .skip { position: absolute; left: -999px; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .skip:focus { left: 28px; top: 28px; background: var(--paper); padding: 8px 12px; border-radius: 8px; z-index: 5; }
 :focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 
@@ -99,8 +100,7 @@ summary { cursor: pointer; font-weight: 500; color: var(--signal); }
 /* First screen: the ship is the stage; the task and the answer sit beside it */
 .stage { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(320px, 1fr); gap: 20px; padding: 14px 28px 20px; }
 .shippanel { position: relative; min-width: 0; }
-.shiphead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
-.shiphead h2 { margin: 0; }
+.shiphead { position: absolute; top: 0; right: 0; z-index: 1; }
 .viewtoggle { display: flex; gap: 2px; padding: 3px; background: var(--paper); border: 1px solid var(--hair); border-radius: 999px; }
 .viewtoggle button { font: 500 13px var(--font); padding: 5px 14px; border: 0; border-radius: 999px;
   background: none; color: var(--slate); cursor: pointer; }
@@ -196,7 +196,8 @@ summary { cursor: pointer; font-weight: 500; color: var(--signal); }
 .error { margin: 0; color: var(--bad); background: var(--bad-bg); border-radius: var(--r-ctl); padding: 10px 14px;
   white-space: pre-wrap; font-size: 13px; }
 
-.story h2 { font-size: 15px; color: var(--slate); font-weight: 500; }
+.story h2 { font-size: 13px; color: var(--cond); font-weight: 600; }
+.story h2:empty { display: none; }
 .verdict { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; margin: 4px 0 12px; }
 /* The icon disc takes the verdict colour; its glyph stays white. */
 .verdict .icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px;
@@ -244,7 +245,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospa
   overflow: auto; background: var(--mist); padding: 10px; border-radius: 10px; }
 
 .gauges { display: grid; gap: 4px; }
-.gauge { display: grid; grid-template-columns: 11.5em 1fr 9.5em; grid-template-areas: "name bar value" ". note note";
+.gauge { display: grid; grid-template-columns: 11.5em 1fr 9.5em; grid-template-areas: "name bar value";
   align-items: center; gap: 2px 14px; padding: 8px 10px; border-radius: 12px; }
 .gauge h3 { grid-area: name; margin: 0; font: 500 14px var(--font); display: flex; flex-direction: column; }
 .gauge .value { grid-area: value; margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; }
@@ -252,7 +253,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospa
 .gauge .bar span { display: block; height: 100%; border-radius: 999px; background: var(--signal); }
 .gauge.warn .bar span { background: var(--amber); }
 .gauge.over .bar span { background: var(--bad); }
-.gauge small { grid-area: note; color: var(--slate); font-size: 12px; }
+.gauge small { color: var(--slate); font-size: 12px; }
 .gauge.limiting { background: var(--bad-bg); }
 .gauge .flag { font-size: 11.5px; font-weight: 600; color: var(--bad); }
 .gauge.unavailable { opacity: .7; }
@@ -260,9 +261,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospa
 .gauge.unavailable small { grid-area: bar; }
 .log { margin: 0; padding: 0 0 0 20px; max-height: 420px; overflow: auto; }
 .log li { padding: 8px 0; border-bottom: 1px solid var(--hair); font-size: 13.5px; }
+.log .why { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .log li:last-child { border-bottom: 0; }
 .log b { font-weight: 600; }
-.foot { padding: 4px 28px 22px; color: var(--slate); font-size: 12px; }
+.foot { padding: 4px 28px 22px; color: var(--bad); font-size: 12px; }
+.more .advanced:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
 
 .status { display: grid; grid-template-columns: 12em 1fr; gap: 0; margin: 0; border: 1px solid var(--hair); border-radius: var(--r-ctl); overflow: hidden; }
 .status dt, .status dd { margin: 0; padding: 8px 12px; border-top: 1px solid var(--hair); font-size: 13px; }
@@ -300,9 +303,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospa
   .tabs button { flex: 1; justify-content: center; padding: 9px 10px; }
   .provenance { margin-left: auto; }
   .hero, .stage, .band, .foot { padding-left: 16px; padding-right: 16px; }
-  .gauge { grid-template-columns: 1fr auto; grid-template-areas: "name value" "bar bar" "note note"; gap: 4px 10px; }
+  .shiphead { position: static; display: flex; justify-content: flex-end; margin-bottom: 6px; }
+  .gauge { grid-template-columns: 1fr auto; grid-template-areas: "name value" "bar bar"; gap: 4px 10px; }
   .facts, .facts.compact, .storyrows, .status { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+.foot:empty { padding: 0 0 8px; }

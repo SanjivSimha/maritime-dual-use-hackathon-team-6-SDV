@@ -124,8 +124,8 @@ function render(data) {
   $("stateStrip").textContent = `Now (t = ${number(snap.t_s)} s): ${number(ship.speed_kn)} kn · ${ship.course} course · ${ship.noise} · deck ${ship.deck} · ${snap.platform.gensets_online} generator(s) · seawater ${number(snap.env.seawater_c)} °C · ${snap.crew} crew`;
   const finished = state.next_t_s >= state.horizon_s;
   $("clock").textContent = finished
-    ? `Simulated time ${number(snap.t_s)} s · this run has ended. Press Start over for a fresh run.`
-    : `Simulated time ${number(snap.t_s)} s · next second ${state.next_t_s} · this run ends at ${state.horizon_s} s.`;
+    ? "This run has ended. Press Start over for a fresh run."
+    : `${number(snap.t_s)} s of ${state.horizon_s} s`;
   $("forward").disabled = $("step").disabled = finished;
   $("replayStatus").textContent = state.replay
     ? `Replay ${state.replay.byte_identical ? "✓ byte-identical" : "✕ DIFFERS"} · ${state.replay.records} records · hash ${short(state.replay.final_hash)}`
@@ -321,8 +321,7 @@ function renderShip() {
   const LEGEND = [["proposed", "＋", "Proposed addition"], ["moved", "↔", "Proposed move"], ["winner", "▲", "Goes first"],
     ["yields", "▼", "Yields"], ["limit", "◆", "Counts toward the limiting resource"], ["affected", "•", "Recommended action"],
     ["changed", "↻", "Changed since the last update"], ["denied", "✕", "Denied by the engine"]];
-  $("legend").replaceChildren(...LEGEND.filter(([k]) => used.has(k)).map(([k, icon, text]) => node("span", `${icon} ${text}`, `chip r-${k}`)),
-    ...(items.some(it => it.dim) ? [node("span", "faded: not involved", "chip dimchip")] : []));
+  $("legend").replaceChildren(...LEGEND.filter(([k]) => used.has(k)).map(([k, icon, text]) => node("span", `${icon} ${text}`, `chip r-${k}`)));
 }
 
 function conditionsText(c) {
@@ -485,23 +484,6 @@ function nextText(d) {
   return "Nothing is pending for this plan.";
 }
 
-// Couple-word preview of each drop-down field: happened · next · changed.
-function digestText(d) {
-  if (!d) return "Details: nothing evaluated yet";
-  const happened = { admission: `Proposed ${d.subject}`, arbitration: "Recovery conflict", shedding: "Power re-check" }[d.kind] ?? (KINDS[d.kind] ?? d.kind);
-  const exec = state.execution;
-  const pending = exec?.status?.pending ?? [];
-  const confirm = awaitingConfirmation();
-  let next = "Nothing pending";
-  if (d.kind === "admission" || !exec?.enabled) next = "Advice only";
-  else if ((d.chosen?.actions ?? []).some(a => a.kind === "deny")) next = "Recovery denied";
-  else if (confirm) next = "Confirm deck";
-  else if (pending.length) next = `${pending.length} step(s) pending`;
-  const n = lastChange ? lastChange.lines.length + lastChange.applied.length : 0;
-  const changed = n ? `${n} change(s)` : "No ship changes";
-  return `Details: ${happened} · ${next} · ${changed}`;
-}
-
 function renderStory() {
   const d = shownDecision();
   const [label, cls, icon] = storyVerdict(d);
@@ -512,8 +494,8 @@ function renderStory() {
   $("storyVerdict").replaceChildren(banner);
   const denial = (d?.chosen?.actions ?? []).some(a => a.kind === "deny");
   renderLimitMeter(awaitingConfirmation() || carriedOut().length || denial ? null : d);
-  $("storyDigest").textContent = digestText(d);
-  $("storyTitle").textContent = state.mode === "SAMPLE" ? "ShipOS says (sample fixture, not this session)" : "ShipOS says";
+  $("storyTitle").textContent = state.mode === "SAMPLE" ? "Sample fixture, not this session" : "";
+  $("storyMore").hidden = !d;
   const dl = $("storyRows");
   dl.replaceChildren();
   const row = (t, ...content) => {
@@ -552,11 +534,11 @@ function renderLimitMeter(d) {
   bar.append(fill);
   bar.setAttribute("role", "img");
   bar.setAttribute("aria-label", `${Math.round(ratio * 100)}% of capacity`);
-  const where = b.corner ? `in its worst case (${b.corner})` : "right now";
-  const unless = ratio > 1 && d.verdict === "yes_if" ? " unless the condition above is met" : "";
+  const where = b.corner ? "in the worst case" : "right now";
   const foot = node("small", b.cls === "time"
-    ? `Needs ${number(b.demand)} ${b.unit}; only ${number(b.capacity)} ${b.unit} available ${where}.`
-    : `${ratio > 1 ? "Over by" : "Spare"} ${number(Math.abs(b.capacity - b.demand))} ${b.unit} ${where}${unless}.`);
+    ? `Needs ${number(b.demand)} ${b.unit}; ${number(b.capacity)} ${b.unit} available.`
+    : `${ratio > 1 ? "Over by" : "Spare"} ${number(Math.abs(b.capacity - b.demand))} ${b.unit} ${where}.`);
+  foot.title = b.corner ? `Worst case: ${b.corner}` : "";
   el.append(head, bar, foot);
 }
 
@@ -770,7 +752,8 @@ function renderGauges() {
     bar.append(fill);
     bar.setAttribute("role", "img");
     bar.setAttribute("aria-label", `${Math.round(ratio * 100)}% of capacity in use`);
-    box.append(bar, node("small", `${ratio > 1 ? "Over by" : "Free"} ${number(Math.abs(g.capacity - g.demand))} ${g.unit} · one-generator capacity ${number(g.facts?.degraded_capacity)} ${g.unit}`));
+    box.append(bar);
+    box.title ||= `${ratio > 1 ? "Over by" : "Free"} ${number(Math.abs(g.capacity - g.demand))} ${g.unit} · one-generator capacity ${number(g.facts?.degraded_capacity)} ${g.unit}`;
     return box;
   }));
 }
@@ -895,8 +878,10 @@ function renderLog() {
   const items = [...state.history].reverse().map(entry => {
     const d = entry.decision;
     const li = node("li");
+    const why = node("span", d.rationale, "why");
+    why.title = d.rationale;  // clamped to one line; full text on hover
     li.append(node("b", `${KINDS[d.kind] ?? d.kind} · ${d.subject} · ${VERDICTS[d.verdict]?.[0] ?? d.verdict}`),
-      ` (${entry.mode})`, node("span", d.rationale, "why"));
+      entry.mode === "SAMPLE" ? " (SAMPLE)" : "", why);
     return li;
   });
   const unavailable = [...state.unavailable].reverse().map(u =>
@@ -1002,7 +987,6 @@ async function start() {
     loadCapabilities();
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${scheme}//${location.host}/ws/${state.id}`);
-    socket.onopen = () => $("transport").textContent = "Local HTTP and WebSocket connected · offline";
     socket.onmessage = e => {
       const update = JSON.parse(e.data);
       if (update.error) $("error").textContent = update.error;
