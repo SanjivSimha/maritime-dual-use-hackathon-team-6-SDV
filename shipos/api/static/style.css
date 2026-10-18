@@ -46,6 +46,7 @@ body[data-mode=SAMPLE] .tag { border-color: #e4b65a; color: #f6dfae; }
   background: var(--surface); border-bottom: 1px solid var(--line); }
 .context label { grid-auto-flow: column; align-items: center; gap: 6px; }
 .notice { margin: 0 0 6px; padding: 3px 8px; font-size: 12px; color: var(--info); background: var(--info-bg); border-radius: 6px; }
+.notice:empty { display: none; }
 
 label { display: grid; gap: 3px; font-size: 13px; font-weight: 600; color: var(--muted); }
 label.inline { display: flex; align-items: center; gap: 6px; }
@@ -78,6 +79,11 @@ small { font-weight: 400; color: var(--muted); }
   background: var(--surface); color: var(--muted); cursor: pointer; }
 .viewtoggle button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #ship { width: 100%; height: auto; max-height: 470px; display: block; background: var(--sea); border-radius: 6px; }
+#ship[hidden], .ship3d[hidden] { display: none; }
+.ship3d { position: relative; width: 100%; height: 470px; background: var(--sea); border-radius: 6px; overflow: hidden; }
+.ship3d canvas { display: block; width: 100%; height: 100%; }
+.tip3d { position: absolute; max-width: 320px; pointer-events: none; font-size: 12px; padding: 4px 8px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
 .strip { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; min-height: 0; }
 .chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-2); }
@@ -166,6 +172,10 @@ summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 .verdict .icon { font-size: 20px; font-weight: 700; width: 24px; text-align: center; }
 .verdict h3 { margin: 0; font-size: 19px; }
 .verdict p { margin: 0; color: var(--text); font-size: 13px; }
+.verdict .headline { display: block; font-size: 13px; font-weight: 400; color: var(--text); }
+.storymore { margin: 0 0 4px; }
+.storymore > summary { font-size: 13px; padding: 2px 0; }
+.storymore[open] > summary { margin-bottom: 6px; }
 .storyrows { display: grid; grid-template-columns: 8.5em 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
 .storyrows dt { font-weight: 700; color: var(--muted); }
 .storyrows dd { margin: 0; }
