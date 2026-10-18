@@ -2,10 +2,10 @@
 
 Date: 18 October 2026. The evidence below comes from three independent sources:
 
-1. `make check`: lint, no-literal guardrail and the full pytest suite. **481 passed, 18 skipped.**
+1. `make check`: lint, no-literal guardrail and the full pytest suite. **491 passed, 18 skipped.**
    The skips are browser tests that need the optional `playwright` package.
 2. `validate.py` (this folder) drives the real engine with expected values computed from the
-   Annex A/B arithmetic, never pasted from engine output. **48 / 48 checks pass.** The full log is
+   Annex A/B arithmetic, never pasted from engine output. **54 / 54 checks pass.** The full log is
    `validation_output.txt`. Rerun with `PYTHONPATH=. uv run python deliverables/05_validation/validate.py`.
 3. A live run of the dashboard (`make demo`) in a browser, with screenshots in `screenshots/`.
 
@@ -53,8 +53,8 @@ Date: 18 October 2026. The evidence below comes from three independent sources:
 
 | # | Finding | Severity | Action |
 |---|---|---|---|
-| F1 | **No card of our own invention.** The brief requires "five cards plus one card of your own invention" | blocker | **Fixed:** `data/guests/G6.yaml` (survivor-care module: safety-critical, requires G5, peak), 11 new registered assumptions, registry regenerated, pinned baseline hashes updated (the replay header serializes every card) |
-| F2 | **D2 could put two guests on one Bay 1 half.** The position check counted units per bay group (2 ≤ 2) but not per slot, and the mirror-image dedupe then hid the valid free half. A light half-bay card was admitted onto G5's half | correctness | **Fixed:** `physics/positions.py` adds a per-slot occupancy check (`deck.<slot>.shared`); `engine/placement.py` dedupes only candidates without doubled slots; `engine/rationale.py` renders the new clause. Two regression tests in `tests/physics/test_mass_positions.py` fail before the fix and pass after. The Annex scenarios are unaffected (baseline hash unchanged by the fix) |
+| F1 | **No card of our own invention.** The brief requires "five cards plus one card of your own invention" | blocker | **Fixed:** the team's original `data/guests/G6.yaml` (towed passive acoustic array, #47: ramp handling, tow speed, quiet, no deck machinery, pausable transect, 17 registered assumptions) is integrated. A second invented card, `G7.yaml` (survivor-care: safety-critical, requires G5, peak), exercises the remaining B.0 flags. The historical G1–G5 baseline hash `ca3abd5…` is kept via a captured-input fixture; a separate test covers the expanded catalog |
+| F2 | **D2 could put two guests on one Bay 1 half.** The position check counted units per bay group (2 ≤ 2) but not per slot, and the mirror-image dedupe then hid the valid free half. A light half-bay card was admitted onto G5's half (this is why #47 originally reported G6 as yes-if displacing G5 on a 5.5 t bay1a; with the fix G6 is a clean yes on bay1b) | correctness | **Fixed:** `physics/positions.py` adds a per-slot occupancy check (`deck.<slot>.shared`); `engine/placement.py` dedupes only candidates without doubled slots; `engine/rationale.py` renders the new clause. Two regression tests in `tests/physics/test_mass_positions.py` fail before the fix and pass after. The Annex scenarios are unaffected (baseline hash unchanged by the fix) |
 | F3 | **Baseline B does not shed at minute 12.** The drone is still airborne (49.5 kW drawn), so the honest answer is "no shedding needed" plus the armed ladder (G5 throttle → G1 off → G3 standby). Even the brief's own numbers (35 + 45 + 2.5 = 82.5 kW < 100) do not overload | demo risk | Not changed. The engine is right. **In the demo, narrate the armed ladder and then show the charging-overlap case** (106.5 kW) from `validation_output.txt` (B12-sar / B12-survey-on-overlap) or `uv run pytest tests/engine/test_shedding.py -v` |
 | F4 | **UI trap.** *Run the mission* keeps *Situation = In port* (Scenario A), so *Report battery* fails silently (HTTP 422: G4 is not aboard) | demo risk | Not changed (UI is outside this task). **Runbook step: select "At sea, running a mission" first** |
 | F5 | **Stale submission docs.** Docs were pinned to `fcd8c58`, said "G6 is absent", used the old name ShipOS, gave Windows-only launch steps, and lacked "another week" and the Annex C closing question | submission | **Fixed:** new README (≤ 3 pp), Physical Account in Annex C form with the closing question, memo restructured to the brief's questions, `make demo` |
@@ -64,7 +64,7 @@ Date: 18 October 2026. The evidence below comes from three independent sources:
 
 ## Files changed in the repository by this validation (uncommitted)
 
-`data/guests/G6.yaml` (new), `data/assumptions/other.yaml`, `data/assumptions/compute_time.yaml`,
+`data/guests/G7.yaml` (new; merged as G6 in #61, renamed when #47 landed), `data/assumptions/other.yaml`, `data/assumptions/compute_time.yaml`,
 `docs/PHYSICAL_ACCOUNT_REGISTRY.md` (regenerated), `shipos/physics/positions.py`,
 `shipos/engine/placement.py`, `shipos/engine/rationale.py`, `tests/physics/test_mass_positions.py`,
 three pinned hashes in `tests/sim/`, the same hash in `docs/SIM_EXECUTION.md`, `docs/ENVIRONMENT.md`

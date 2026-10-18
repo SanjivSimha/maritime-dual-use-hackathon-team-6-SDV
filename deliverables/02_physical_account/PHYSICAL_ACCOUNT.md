@@ -1,7 +1,7 @@
 # Physical Account (Annex C): PoseidonOS, Team 6
 
 Every number the software relies on that is not in Annex A/B, or that narrows an Annex value. All
-96 assumptions are in `data/assumptions/*.yaml` with value, unit, range, reason and source, and are read through
+113 assumptions are in `data/assumptions/*.yaml` with value, unit, range, reason and source, and are read through
 `A("<id>")`. CI fails on any other numeric literal in `shipos/physics` or `shipos/engine`. The
 **appendix** (generated, pages 2+) lists every use site by file and line.
 
@@ -26,14 +26,15 @@ Every number the software relies on that is not in Annex A/B, or that narrows an
 | | Acoustic drop | down if manoeuvring, deck machinery or layered water | A.5 | `physics/links.py` `acoustic_up` |
 | **State transitions** | Plan on A.6 upper bound; speed/course/noise settle concurrently | e.g. quiet 4 min; deck clear 5 / 12 min (14 / 6 crew) | a deadline met on paper is met at sea | `statemachine.py` planner |
 | | Speed band edges | 0.5 / 7.5 / 16 kn | midpoints of A.6 gaps | `physics/power.py` `speed_band` |
-| **Compute · Response time** | Per-guest cores (G1–G6) | 4 / 2 / 8+1 acc / 8+1 acc / 4 / 2 | per-card workload | `physics/compute.py` |
+| **Compute · Response time** | Per-guest cores (G1–G7) | 4 / 2 / 8+1 acc / 8+1 acc / 4 / 4 / 2 | per-card workload | `physics/compute.py` |
 | | D4 horizon / first action / step | 30 min / t+1 s / 2 s steps | ceilings 5 s / 60 s | `engine/shedding.py` |
 | | Solver budgets | ≤ 200 000 placements, ≤ 3 restrictions, ≤ 20 000 shed combos, then deterministic fallback | stay under 30 s / 5 s | `engine/placement.py`, `admission.py`, `shedding.py` |
 | **Priorities · Crew** | Capability weights high / medium / low | 1.0 / 0.5 / 0.2; mission-critical ≥ 0.8 | B.0: resolved from priority file | `data/priorities/*.yaml`, all engines |
 | | Confirmation delay | 15–60 s (14), 60–180 s (6), forbidden at 0 | A.6 | `crew/policy.py` |
 | | Six-crew handling window | 07:00–19:00 local | reduced crew, daylight only | `sim/env.py` |
 | **Anything else** | G3 recovery 15 min, suspended leg restarts after 75 min; G4 approach/launch 3 min, top-up 30 min | as stated | card gives totals only | `data/guests/G3.yaml`, `G4.yaml` |
-| | **G6 (our card)**: 2.4 t, 3 / 18 kW + 10 kW × 20 s peak, 1 Mbit/s SATCOM, port-only 4 people / 4 h | invented, ranges in registry | civil survivor-care module | `data/guests/G6.yaml` |
+| | **G6 (our card)**: towed acoustic array 2.5 t; winch 15 kW × 20 min deploy/recover; listening 4 kW at 4–6 kn, quiet; 120-min transect, 30-min pause; port-only 3 people / 4 h | 17 invented values | civil marine-mammal monitoring | `data/guests/G6.yaml`, `data/assumptions/g6.yaml` |
+| | **G7**: survivor-care module 2.4 t, 3 / 18 kW + 10 kW × 20 s peak, requires G5, safety-critical | invented, ranges in registry | exercises B.0 flags | `data/guests/G7.yaml` |
 | | Environment: Open-Meteo Strait of Sicily cache, hourly hold, sea-state from Hs (WMO 3700) | cache ≤ 24 h old | offline, replayable | `sim/env.py`, `data/env_cache/` |
 
 **Brief inconsistency recorded.** Annex B says "any four exceed the 10 t margin". By the card masses,

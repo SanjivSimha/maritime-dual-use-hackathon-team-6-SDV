@@ -2,9 +2,9 @@
 MANIFEST (B.0)
 ==============================================================================
 [PASS] MAN-1  Five Annex B cards load and validate
-         cards: ['G1', 'G2', 'G3', 'G4', 'G5', 'G6']
+         cards: ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7']
 [PASS] MAN-2  One card of the team's own invention in data/guests/
-         extra cards: ['G6']
+         extra cards: ['G6', 'G7']
 [PASS] MAN-3  Manifest expresses B.0 ontology fields
          top-level keys: ['activities', 'allowed', 'area_m2', 'at_sea_swap', 'battery', 'capability', 'compute', 'cooling', 'data', 'excludes', 'id', 'initial_mode', 'installation', 'logical_reconfig', 'mass_t', 'modes', 'name', 'parts', 'preferred', 'radar_sensitivity_loss', 'requires', 'safety_commands', 'safety_critical']
 [PASS] MAN-4  Schema file exists
@@ -29,7 +29,7 @@ PLATFORM MODEL (A.1–A.8)
 SCENARIO A — D1 admission + D2 placement (installed G1, G2, G5)
 ==============================================================================
 [PASS] A-G3   Card G3: verdict in < 30 s with binding class
-         verdict=yes_if binding=deck:deck.bay1 3.0/2.0 units  t=28 ms
+         verdict=yes_if binding=deck:deck.bay1 3.0/2.0 units  t=27 ms
          placement={'G3': {'body': 'bay1'}, 'G2': {'body': 'bay2'}, 'G1': {'body': 'mast3'}}
          holds_one_genset_down=True
          rationale: Admit G3 if G5 is displaced: bay1 holds 2 units but G3 and G5 need 3; this costs 0.2 capability against 1 returned; cost: G5 loses 0.2 capability (restores coastal connectivity); holds with one genset down.
@@ -38,7 +38,7 @@ SCENARIO A — D1 admission + D2 placement (installed G1, G2, G5)
          2. remove G2 + move G5 (cost 1.000)
 [PASS] A-G3h  States whether it holds with one genset down
 [PASS] A-G4   Card G4: verdict in < 30 s with binding class
-         verdict=yes_if binding=power:power.total 101.5/100.0 kW  t=53 ms
+         verdict=yes_if binding=power:power.total 101.5/100.0 kW  t=52 ms
          placement={'G5': {'body': 'bay1a', 'antenna': 'hangar_roof'}, 'G4': {'body': 'hangar'}, 'G2': {'body': 'bay2'}, 'G1': {'body': 'mast3'}}
          holds_one_genset_down=False
          rationale: Admit G4 if G2's winch waits while G4 charging with one genset down: at slow speed in 30 °C water with one genset down, guests need 101.5 kW against 100 kW usable (1.5 kW short; G5 45, G4 35, G2 20, G1 1.5 kW); this costs 0.05 capability against 0.2 returned; cost: G2 loses 0.05 capability (with one genset down).
@@ -52,7 +52,7 @@ SCENARIO A — D1 admission + D2 placement (installed G1, G2, G5)
 [PASS] A-G4x  G4 binding is power 101.5 kW vs 100 kW one-genset (1.5+20+35+45)
          101.5 vs 100.0
 [PASS] A2-G1  Installed G2,G3,G4 → card G1: verdict in < 30 s
-         verdict=no binding=mass.margin t=49 ms
+         verdict=no binding=mass.margin t=48 ms
          rationale: Refuse G1: mass would reach 10.08 t against the 10 t margin (0.08 t over); the cheapest fix (G4 is displaced) costs 0.2 capability, more than the 0.2 G1 returns.
 [PASS] A2-G5  Installed G2,G3,G4 → card G5: verdict in < 30 s
          verdict=no binding=deck.bay2 t=44 ms
@@ -128,27 +128,42 @@ SCENARIO B — D4 degradation at minute 12
          every guest's loss: [('G1', 0.0, '% capability'), ('G3', 0.0, '% capability'), ('G4', 0.0, '% capability'), ('G5', 70.0, '% capability')]
          rationale: Genset trip: at slow speed in 24 °C water with one genset down, guests need 106.5 kW against 100 kW usable (6.5 kW short; G5 45, G4 35, G3 25, G1 1.5 kW); shed in order: G5 drops to low_power (−37 kW); cost: G1 keeps on, G3 keeps holding, G4 keeps flying, G5 loses 70 % capability (low_power for 30 min).
 ============================================================================== 
-G6 — team card (safety-critical, requires, peak)
+G7 — second invented card (safety-critical, requires, peak)
 ==============================================================================
-[PASS] G6-1   G6 declares safety_critical, requires and a motor-start peak
+[PASS] G7-1   G7 declares safety_critical, requires and a motor-start peak
          requires=['G5'] peak=[10.0]
-[PASS] G6-2   Unmet `requires` (G5 not aboard) refuses with the relation named
-         Refuse G6: G6 requires G5: telemedicine to a shore hospital runs over the comms node's SATCOM.
-[PASS] G6-3   Bay-half card goes to the free half, never double-books G5's half (regression)
+[PASS] G7-2   Unmet `requires` (G5 not aboard) refuses with the relation named
+         Refuse G7: G7 requires G5: telemedicine to a shore hospital runs over the comms node's SATCOM.
+[PASS] G7-3   Bay-half card goes to the free half, never double-books G5's half (regression)
          verdict=yes placement={'body': 'bay1b'}
-         Admit G6: every envelope corner holds; tightest, bay1 is now full (G5, G6); holds with one genset down.
-[PASS] G6-4   Real G6 (2.4 t) in Scenario A: coherent verdict and binding
+         Admit G7: every envelope corner holds; tightest, bay1 is now full (G5, G7); holds with one genset down.
+[PASS] G7-4   Real G7 (2.4 t) in Scenario A: coherent verdict and binding
          verdict=yes binding=deck.bay1
+         Admit G7: every envelope corner holds; tightest, bay1 is now full (G5, G7); holds with one genset down.
+[PASS] G7-5-survey D4 with G7 treating (survey): safety-critical G7 never shed
+         Genset trip: at slow speed in 24 °C water with one genset down, guests need 124.5 kW against 100 kW usable (24.5 kW short; G5 45, G4 35, G3 25, G7 18, G1 1.5 kW); shed in order: G5 drops to low_power (−37 kW); cost: G1 keeps on, G3 keeps holding, G4 keeps flying, G5 loses 70 % capability (low_power for 30 min), G7 keeps treating.
+[PASS] G7-5-sar D4 with G7 treating (sar): safety-critical G7 never shed
+         Genset trip: at slow speed in 24 °C water with one genset down, guests need 124.5 kW against 100 kW usable (24.5 kW short; G5 45, G4 35, G3 25, G7 18, G1 1.5 kW); shed in order: G3 charging is deferred 5 min (−24 kW); then G1 is switched off (−1.5 kW); cost: G1 loses 100 % capability (off for 30 min), G3 loses 5 min (charging deferred), G4 keeps flying, G5 keeps on, G7 keeps treating.
+============================================================================== 
+G6 — team card: towed passive acoustic array
+==============================================================================
+[PASS] G6-1   G6 manifest says what Kubernetes cannot: ramp handling, tow speed, quiet, no deck machinery
+         listening conditions: {'speed_kn': {'lo': 4.0, 'hi': 6.0}, 'course': <Course.STEADY: 'steady'>, 'noise': <Noise.QUIET: 'quiet'>, 'deck_machinery_allowed': False, 'uses_flight_deck': False, 'uses_ramp': False, 'needs_manoeuvre_freedom': False}
+[PASS] G6-2-survey Scenario A (survey): admitted onto the free Bay 1 half, not G5's
          Admit G6: every envelope corner holds; tightest, bay1 is now full (G5, G6); holds with one genset down.
-[PASS] G6-5-survey D4 with G6 treating (survey): safety-critical G6 never shed
-         Genset trip: at slow speed in 24 °C water with one genset down, guests need 124.5 kW against 100 kW usable (24.5 kW short; G5 45, G4 35, G3 25, G6 18, G1 1.5 kW); shed in order: G5 drops to low_power (−37 kW); cost: G1 keeps on, G3 keeps holding, G4 keeps flying, G5 loses 70 % capability (low_power for 30 min), G6 keeps treating.
-[PASS] G6-5-sar D4 with G6 treating (sar): safety-critical G6 never shed
-         Genset trip: at slow speed in 24 °C water with one genset down, guests need 124.5 kW against 100 kW usable (24.5 kW short; G5 45, G4 35, G3 25, G6 18, G1 1.5 kW); shed in order: G3 charging is deferred 5 min (−24 kW); then G1 is switched off (−1.5 kW); cost: G1 loses 100 % capability (off for 30 min), G3 loses 5 min (charging deferred), G4 keeps flying, G5 keeps on, G6 keeps treating.
+[PASS] G6-2-sar Scenario A (sar): admitted onto the free Bay 1 half, not G5's
+         Admit G6: every envelope corner holds; tightest, bay1 is now full (G5, G6); holds with one genset down.
+[PASS] G6-2-patrol Scenario A (patrol): admitted onto the free Bay 1 half, not G5's
+         Admit G6: every envelope corner holds; tightest, bay1 is now full (G5, G6); holds with one genset down.
+[PASS] G6-3   Installed G2, G3, G4: refused on Bay 1 with the cheapest fix priced
+         Refuse G6: bay1 holds 2 units but G3 and G6 need 3; the cheapest fix (G2 is displaced) costs 1 capability, more than the 1 G6 returns.
+[PASS] G6-4   A-prime: port-only card at sea is not now, with the next window
+         Not now: G6 installs only in port (3 people, 4 h); next window: next port call, within 14 days.
 ============================================================================== 
 DETERMINISM / REPLAY (end-to-end sim, real engine callback)
 ==============================================================================
 [PASS] DET-1  Same seed + timeline → identical decision-log hash
-         6488ca8c4a70f70e05a668ab91a6d6383d73b9752646655119b9a9375a7e852e  (1.15 s for 900 ticks)
+         46efccce07a2e550ed1eca9fe0ee53beaad52cf9f4c196c9672dc4feb34aed0a  (1.29 s for 900 ticks)
 [PASS] DET-2  Replay re-executes the engine byte-identically
 [PASS] E2E-B  End-to-end B run logs decisions at t=480 (D3) and t=720 (D4)
          t=480.0 arbitration decided: G4 goes first: G4 must land within 12 min and waiting for the end of G3 survey_leg takes 41 min; G3 holds (holding) for 15 min, G4 proceeds to recovery; cost: G
@@ -159,4 +174,4 @@ ENGINE PURITY / OFFLINE
 [PASS] PURE   No clock, randomness, file or network I/O in shipos/engine
 [PASS] OFFL   UI loads no remote assets (offline)
 ==============================================================================
-48/48 checks passed
+54/54 checks passed

@@ -323,35 +323,35 @@ for name, prio, snapf in (
         f"every guest's loss: {[(c.guest, c.amount, c.unit) for c in d.costs]}\nrationale: {d.rationale}",
     )
 
-print("=" * 78, "\nG6 — team card (safety-critical, requires, peak)\n" + "=" * 78)
+print("=" * 78, "\nG7 — second invented card (safety-critical, requires, peak)\n" + "=" * 78)
 
-g6 = guests["G6"]
+g7 = guests["G7"]
 check(
-    "G6-1",
-    "G6 declares safety_critical, requires and a motor-start peak",
-    g6.safety_critical and g6.requires and any(m.peak_kw for m in g6.modes),
-    f"requires={[r.target for r in g6.requires]} peak={[m.peak_kw for m in g6.modes if m.peak_kw]}",
+    "G7-1",
+    "G7 declares safety_critical, requires and a motor-start peak",
+    g7.safety_critical and g7.requires and any(m.peak_kw for m in g7.modes),
+    f"requires={[r.target for r in g7.requires]} peak={[m.peak_kw for m in g7.modes if m.peak_kw]}",
 )
 no_g5 = {"G1": ("on", P(Line.STBD, body="mast3")), "G2": ("profiling", P(Line.STBD, body="bay2"))}
-d = admission.decide(ship, guests, scenario_a(installed=no_g5), g6, sar, env)
+d = admission.decide(ship, guests, scenario_a(installed=no_g5), g7, sar, env)
 check(
-    "G6-2",
+    "G7-2",
     "Unmet `requires` (G5 not aboard) refuses with the relation named",
-    d.verdict == Verdict.NO and d.binding.resource == "relation.requires.G6",
+    d.verdict == Verdict.NO and d.binding.resource == "relation.requires.G7",
     d.rationale,
 )
-light = g6.model_copy(update={"mass_t": 0.5})
-d = admission.decide(ship, {**guests, "G6": light}, scenario_a(), light, sar, env)
+light = g7.model_copy(update={"mass_t": 0.5})
+d = admission.decide(ship, {**guests, "G7": light}, scenario_a(), light, sar, env)
 check(
-    "G6-3",
+    "G7-3",
     "Bay-half card goes to the free half, never double-books G5's half (regression)",
-    d.placement and d.placement["G6"].slots["body"] == "bay1b",
-    f"verdict={d.verdict.value} placement={d.placement['G6'].slots if d.placement else None}\n{d.rationale}",
+    d.placement and d.placement["G7"].slots["body"] == "bay1b",
+    f"verdict={d.verdict.value} placement={d.placement['G7'].slots if d.placement else None}\n{d.rationale}",
 )
-d = admission.decide(ship, guests, scenario_a(), g6, sar, env)
+d = admission.decide(ship, guests, scenario_a(), g7, sar, env)
 check(
-    "G6-4",
-    "Real G6 (2.4 t) in Scenario A: coherent verdict and binding",
+    "G7-4",
+    "Real G7 (2.4 t) in Scenario A: coherent verdict and binding",
     d.binding is not None,
     f"verdict={d.verdict.value} binding={d.binding.resource}\n{d.rationale}",
 )
@@ -360,7 +360,7 @@ snap = snap.model_copy(
     update={
         "guests": {
             **snap.guests,
-            "G6": GuestRuntime(id="G6", mode="treating", placement=P(Line.PORT, body="bay1a")),
+            "G7": GuestRuntime(id="G7", mode="treating", placement=P(Line.PORT, body="bay1a")),
         }
     }
 )
@@ -368,11 +368,47 @@ for name, prio in (("survey", survey), ("sar", sar)):
     d = shedding.plan(ship, guests, snap, prio, protected=frozenset({"G4"}))
     touched = [a.guest for a in d.chosen.actions] if d.chosen else []
     check(
-        "G6-5-" + name,
-        f"D4 with G6 treating ({name}): safety-critical G6 never shed",
-        "G6" not in touched and d.verdict == Verdict.SHED,
+        "G7-5-" + name,
+        f"D4 with G7 treating ({name}): safety-critical G7 never shed",
+        "G7" not in touched and d.verdict == Verdict.SHED,
         d.rationale,
     )
+
+print("=" * 78, "\nG6 — team card: towed passive acoustic array\n" + "=" * 78)
+g6 = guests["G6"]
+listening = g6.mode("listening").conditions
+check(
+    "G6-1",
+    "G6 manifest says what Kubernetes cannot: ramp handling, tow speed, quiet, no deck machinery",
+    g6.mode("deploying").conditions.uses_ramp
+    and listening.noise.value == "quiet"
+    and listening.deck_machinery_allowed is False
+    and listening.speed_kn.lo == 4
+    and listening.speed_kn.hi == 6,
+    f"listening conditions: {listening.model_dump(exclude_none=True)}",
+)
+for name, prio in (("survey", survey), ("sar", sar), ("patrol", patrol)):
+    d = admission.decide(ship, guests, scenario_a(), g6, prio, env)
+    check(
+        "G6-2-" + name,
+        f"Scenario A ({name}): admitted onto the free Bay 1 half, not G5's",
+        d.verdict == Verdict.YES and d.placement["G6"].slots["body"] == "bay1b",
+        d.rationale,
+    )
+d = admission.decide(ship, guests, scenario_a(installed=alt), g6, survey, env)
+check(
+    "G6-3",
+    "Installed G2, G3, G4: refused on Bay 1 with the cheapest fix priced",
+    d.verdict == Verdict.NO and d.binding.resource == "deck.bay1",
+    d.rationale,
+)
+d = admission.decide(ship, guests, scenario_a(situation=Situation.AT_SEA, speed=6), g6, survey, env)
+check(
+    "G6-4",
+    "A-prime: port-only card at sea is not now, with the next window",
+    d.verdict == Verdict.NOT_NOW and d.binding.resource == "install.port_only",
+    d.rationale,
+)
 
 print("=" * 78, "\nDETERMINISM / REPLAY (end-to-end sim, real engine callback)\n" + "=" * 78)
 

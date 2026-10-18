@@ -1,30 +1,62 @@
-# Team 6 invention (not in Annex B): G6 Survivor-care medical module.
-# The only card that sets safety_critical, `requires` and a motor-start peak; every number is an
-# assumption ("$<id>", data/assumptions/), because no Annex value exists for it.
+# G6 Towed passive acoustic array — the team's own card (not Annex B). Civil use: marine-mammal
+# and ambient-noise monitoring. Every number is invented and lives in data/assumptions/g6.yaml.
+# The drum module mounts in a deck bay; the stern ramp is used only while streaming or recovering
+# the array, so it appears as an activity condition (uses_ramp), never as a mounting slot.
 id: G6
-name: Survivor-care medical module
-mass_t: "$guests.g6.mass_t"
+name: Towed passive acoustic array
+mass_t: "$guests.g6.body_mass_t"
 cooling: water                     # bay manifold (A.2)
 preferred: [bay1_half]
 allowed: [bay1_half, bay2]
 modes:
   - {name: standby, tier: standby, power_kw: "$guests.g6.standby_kw", capability_factor: 0}
-  - name: treating                 # warming, oxygen concentrators, monitors for rescued people
-    power_kw: "$guests.g6.treating_kw"
-    peak_kw: "$guests.g6.compressor_peak_kw"
-    peak_s: "$guests.g6.compressor_peak_s"
+  - name: deploying                # tow winch pays the array out over the ramp
+    power_kw: "$guests.g6.winch_kw"
+    duration_min: "$guests.g6.deploy_min"
+    next_mode: listening
+    deferrable: true
+    capability_factor: 0
+    deck_machinery: true
+    conditions: &over_ramp
+      speed_kn: {lo: "$guests.g6.tow_speed_lo_kn", hi: "$guests.g6.tow_speed_hi_kn"}
+      course: steady
+      sea_state_max: "$guests.g6.ramp_sea_state_max"
+      uses_ramp: true
+  - name: listening
+    power_kw: "$guests.g6.listening_kw"
+    duration_min: "$guests.g6.transect_min"
+    next_mode: recovering
+    conditions:
+      speed_kn: {lo: "$guests.g6.tow_speed_lo_kn", hi: "$guests.g6.tow_speed_hi_kn"}
+      course: steady
+      noise: quiet
+      deck_machinery_allowed: false
+  - {name: streamed, power_kw: "$guests.g6.standby_kw", capability_factor: 0}  # array in the water, not recording
+  - name: recovering
+    power_kw: "$guests.g6.winch_kw"
+    duration_min: "$guests.g6.recover_min"
+    next_mode: standby
+    capability_factor: 0
+    deck_machinery: true
+    conditions: *over_ramp
   - {name: "off", tier: "off", power_kw: 0, capability_factor: 0}
 initial_mode: standby
-requires:
-  - {target: G5, reason: "telemedicine to a shore hospital runs over the comms node's SATCOM"}
-safety_critical: true              # never shed automatically; a human confirms where crew exists
+activities:
+  - {name: deploy, mode: deploying, duration_min: "$guests.g6.deploy_min", followed_by: transect}
+  - name: transect
+    mode: listening
+    duration_min: "$guests.g6.transect_min"
+    preempt:                       # recordings so far stay valid, so no rerun
+      - {name: pause, hold_mode: streamed, window_min: "$guests.g6.pause_window_min", rerun: false}
+excludes:
+  - {kind: conditional, mode: listening, target: G2, target_mode: winch, reason: "winch is deck machinery and G6 is listening"}
 data:
-  - {link: satcom, mbps: "$guests.g6.satcom_mbps"}
   - {link: backbone, mbps: "$guests.g6.backbone_mbps"}
-compute: {cores: "$compute.g6.cores", mem_gb: "$compute.g6.mem_gb"}
+  - {link: satcom, mbps: "$guests.g6.satcom_mbps"}   # detection summaries; buffers when short
+compute: {cores: "$guests.g6.cores", mem_gb: "$guests.g6.mem_gb"}
 capability:
-  name: keeps rescued people alive until a shore hospital
-  value_by_mission: {rescue: high, disaster_relief: high, patrol: medium}
+  name: marine-mammal and ambient-noise monitoring
+  value_by_mission: {survey: high}
   default: low
-  tags: [sar, medical]
-installation: {where: port_only, people: "$guests.g6.install_people", hours: "$guests.g6.install_h"}
+  tags: [acoustics, environment, passive]
+installation: {where: port_only, people: "$guests.g6.install_people", hours: "$guests.g6.install_hours"}

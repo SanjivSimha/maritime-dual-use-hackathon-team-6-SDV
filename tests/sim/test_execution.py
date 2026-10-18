@@ -388,7 +388,7 @@ def test_failed_tick_rolls_back_queue_evidence_context_rng_cursor_and_hash():
     assert state(sim) == before
 
 
-def test_repeated_inputs_status_copy_and_old_observation_bytes():
+def test_repeated_inputs_status_copy_and_old_observation_bytes(historical_scenario_b):
     runs = [runner(base(t_s=480)) for _ in range(2)]
     for sim in runs:
         sim.step([event(sim, "battery_report", guest_id="G4", battery_pct=18)])
@@ -399,11 +399,11 @@ def test_repeated_inputs_status_copy_and_old_observation_bytes():
     status["protected"].clear()
     assert runs[0].execution_status["pending"] and runs[0].context.protected
     assert Context.__dataclass_fields__["protected"].default == frozenset()
-    observation = load_scenario(DATA_DIR / "scenarios/B.yaml")
+    observation = historical_scenario_b()
     observation.run(721)
     # Published B2 baseline evidence is unchanged.
     assert (
-        observation.final_hash == "3e43733a289dabdbd77b2cda1bbea4cc176f153bf9e6eb101e205b7b691712d7"
+        observation.final_hash == "ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28"
     )
     assert replay_jsonl(observation.jsonl).jsonl == observation.jsonl
     assert not observation.execution_status["enabled"]
