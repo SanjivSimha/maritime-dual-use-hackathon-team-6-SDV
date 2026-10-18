@@ -5,6 +5,7 @@
   <title>ShipOS · Resource governor</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/ship.js" defer></script>
+  <script src="/static/ship3d.js" type="module"></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -30,9 +31,12 @@
         <div class="viewtoggle" role="group" aria-label="Ship view">
           <button id="viewTop" type="button" aria-pressed="true">Top view</button>
           <button id="viewSide" type="button" aria-pressed="false">Side view</button>
+          <button id="view3d" type="button" aria-pressed="false">3D</button>
         </div>
       </div>
       <svg id="ship" viewBox="0 0 1000 440" role="group" aria-label="Ship areas and equipment. Select a piece of equipment for details."></svg>
+      <div id="ship3d" class="ship3d" role="img" aria-label="3D ship schematic. Drag to rotate, scroll to zoom. The top and side views and the text list carry the same information." hidden></div>
+      <p id="ship3dNote" class="hint" hidden>3D schematic, not to scale. Drag to rotate, scroll to zoom, hover for details. Below deck: generators, the two mission power lines and the cooling loop, tinted green / amber / red by load; the limiting part pulses.</p>
       <p id="stateStrip" class="strip"></p>
       <div id="legend" class="legend" aria-label="Legend"></div>
       <article id="selection" class="selection" aria-live="polite" hidden></article>
@@ -118,9 +122,11 @@
 
       <section id="story" class="story" aria-labelledby="storyTitle" aria-live="polite">
         <h2 id="storyTitle">What is going on</h2>
-        <p id="notice" class="notice" role="status">Connecting to the local governor…</p>
         <div id="storyVerdict"></div>
-        <dl id="storyRows" class="storyrows"></dl>
+        <details id="storyMore" class="storymore">
+          <summary id="storyDigest">Details</summary>
+          <dl id="storyRows" class="storyrows"></dl>
+        </details>
         <a class="more" href="#details">Full result, mission status and evidence ↓</a>
       </section>
     </aside>

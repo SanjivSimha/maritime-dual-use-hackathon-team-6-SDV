@@ -212,3 +212,46 @@ def test_unmatched_applied_record_is_labelled_as_limited(page):
     }""")
     assert "task 99 (action)" in story(page)
     assert "carries only its number, kind and time" in story(page)
+
+
+def parts3d(page):
+    return page.evaluate("window.ship3d.inspect()")
+
+
+def test_3d_view_follows_the_live_result_offline(page):
+    page.click("#view3d")
+    assert page.locator("#ship").is_hidden() and page.locator("#ship3d canvas").is_visible()
+    assert page.locator("#view3d").get_attribute("aria-pressed") == "true"
+    page.wait_for_function("window.ship3d.inspect().length > 0")
+    # Installed equipment comes from the real snapshot placements.
+    shown = {p["gid"] for p in parts3d(page)}
+    assert set(page.evaluate("Object.keys(state.snapshot.guests)")) <= shown
+    online = page.evaluate("state.snapshot.platform.gensets_online")
+    gens = [p for p in parts3d(page) if p["label"].startswith("Generator")]
+    assert sum("online" in p["label"] for p in gens) == online and not any(
+        p["pulsing"] for p in gens
+    )
+
+    # A proposal appears as its own amber block, and the 3D view is redrawn on the update.
+    evaluate(page, "G4")
+    page.wait_for_function("window.ship3d.inspect().some(p => p.gid === 'G4')")
+    g4 = [p for p in parts3d(page) if p["gid"] == "G4"]
+    assert g4 and all(p["color"] == "d99a1e" for p in g4)
+
+    # A generator trip at sea dims and flags the generator that went offline.
+    page.select_option("#scenario", "B")
+    page.wait_for_function("state.scenario === 'B'")
+    page.click("#tab-mission")
+    page.click('button[data-event="genset_trip"]')
+    page.wait_for_function(f"state.snapshot.platform.gensets_online < {online}")
+    page.wait_for_function(
+        "window.ship3d.inspect().some(p => p.label.endsWith('offline') && p.pulsing)"
+    )
+    # The limiting resource of the shown result is the part drawn red.
+    binding = page.evaluate("state.decision?.binding")
+    if binding and binding["cls"] == "power" and not binding["resource"].startswith("power.line."):
+        lines = [p for p in parts3d(page) if "power line" in p["label"]]
+        assert len(lines) == 2 and all(p["pulsing"] and p["color"] == "a3271f" for p in lines)
+
+    page.click("#viewTop")
+    assert page.locator("#ship").is_visible() and page.locator("#ship3d").is_hidden()
