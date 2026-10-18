@@ -586,7 +586,7 @@ function renderPreviousRuns() {
     const li = node("li");
     const a = node("a", `Run ${r.run} evidence`);
     a.href = `/api/sessions/${state.id}/evidence?run=${encodeURIComponent(r.run)}`;
-    a.setAttribute("download", `shipos-evidence-run-${r.run}.json`);
+    a.setAttribute("download", `poseidonos-evidence-run-${r.run}.json`);
     li.append(a, ` · hash ${short(r.final_hash)}`);
     li.title = r.final_hash ?? "";
     return li;
