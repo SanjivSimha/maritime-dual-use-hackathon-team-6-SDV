@@ -22,7 +22,9 @@ def gauges(
     guests: dict[str, GuestManifest],
     snap: WorldSnapshot,
     last_latency_s: float = 0,
+    latency_kind: str = "arbitration",
 ) -> list[ConstraintResult]:
+    """`last_latency_s` is the measured time of the latest `latency_kind` decision (A.8)."""
     present = {gid: guests[gid] for gid in snap.guests}
     draws = {
         gid: _draw_kw(present[gid], rt.mode, rt.measured_kw) for gid, rt in snap.guests.items()
@@ -98,6 +100,6 @@ def gauges(
         )
     cores = compute.checks(ship, list(present.values()))[0]
     cores = cores.model_copy(update={"facts": {"degraded_capacity": cores.capacity}})
-    t = timing.latency_check(ship, "arbitration", last_latency_s)
+    t = timing.latency_check(ship, latency_kind, last_latency_s)
     t = t.model_copy(update={"facts": {"degraded_capacity": t.capacity}})
     return [p, h, d, mast_g, raw, data, cores, t]

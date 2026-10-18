@@ -256,9 +256,10 @@ def search(
             (g, tuple(sorted((k, kind_group[v]) for k, v in slots[g].items()))) for g in ids
         )
         used = [v for g in ids for v in slots[g].values()]
-        if signature in seen and len(used) == len(set(used)):
-            continue
-        seen.add(signature)
+        if len(used) == len(set(used)):  # a doubled slot must not hide its valid mirror
+            if signature in seen:
+                continue
+            seen.add(signature)
         placement = _assign_lines(ship, guests, slots, fixed, movable)
         cands.append(
             _evaluate(kernel, ship, guests, placement, envelope, priorities, fixed, movable)

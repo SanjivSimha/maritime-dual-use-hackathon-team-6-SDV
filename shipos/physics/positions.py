@@ -55,6 +55,7 @@ def check(
     used: dict[str, dict[str, int]] = defaultdict(dict)  # group → guest → units
     mass_in: dict[str, dict[str, float]] = defaultdict(dict)  # slot → guest → t
     area_in: dict[str, dict[str, float]] = defaultdict(dict)
+    items_in: dict[str, list[str]] = defaultdict(list)  # slot → guests mounted there
 
     for gid, p in placements.items():
         g = guests[gid]
@@ -84,6 +85,7 @@ def check(
                         )
                     )
                 used[s.group][f"{gid}.{item}"] = s.units
+                items_in[sid].append(gid)
             mass_in[sid][gid] = mass_in[sid].get(gid, 0) + m
             if area is not None:
                 area_in[sid][gid] = area_in[sid].get(gid, 0) + area
@@ -140,6 +142,19 @@ def check(
                 facts={"occupied_by": occupied[0]} if occupied else {},
             )
         )
+    for sid, who in sorted(items_in.items()):
+        if len(who) > 1:  # a mounting point takes one item; group units alone miss a doubled half
+            s = slot(ship, sid)
+            results.append(
+                ConstraintResult(
+                    cls=_cls(s),
+                    resource=f"{_cls(s).value}.{sid}.shared",
+                    capacity=1,
+                    demand=len(who),
+                    unit="items",
+                    contributors=dict.fromkeys(who, 1),
+                )
+            )
     for sid, by_guest in sorted(mass_in.items()):
         s = slot(ship, sid)
         results.append(
