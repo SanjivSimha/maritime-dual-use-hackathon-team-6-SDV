@@ -56,7 +56,7 @@ def test_ship_loads_with_annex_values():
 
 def test_five_guest_cards_load():
     guests = load_guests()
-    assert sorted(guests) == ["G1", "G2", "G3", "G4", "G5"]
+    assert {"G1", "G2", "G3", "G4", "G5"} <= set(guests)  # Annex B; added cards also load
     for g in guests.values():
         assert isinstance(g, GuestManifest)
         g.mode(g.initial_mode)  # initial mode exists

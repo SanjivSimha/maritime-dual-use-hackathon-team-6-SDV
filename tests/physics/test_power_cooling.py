@@ -34,7 +34,8 @@ def test_lines_after_trip(ship):
 
 
 def test_all_five_fit_at_cruise(ship, guests):
-    worst = sum(power.max_sustained_kw(g) for g in guests.values())
+    # Annex B arithmetic covers G1-G5 only; later catalog cards (e.g. G6) are not in it.
+    worst = sum(power.max_sustained_kw(guests[gid]) for gid in ("G1", "G2", "G3", "G4", "G5"))
     assert worst == pytest.approx(126.5)  # incl. the 20 kW winch
     no_winch = 1.5 + 6 + 25 + 35 + 45
     assert no_winch == pytest.approx(112.5)
