@@ -319,7 +319,7 @@ def view(state: Session) -> dict:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ShipOS offline governor")
+    app = FastAPI(title="PoseidonOS offline governor")
     sessions: dict[str, Session] = {}
     locks: dict[str, asyncio.Lock] = {}
     peers: dict[str, set[WebSocket]] = {}
@@ -383,7 +383,7 @@ def create_app() -> FastAPI:
         async with locks[sid]:
             return JSONResponse(
                 get(sid).simulation.evidence() if run is None else archived(get(sid), run),
-                headers={"Content-Disposition": 'attachment; filename="shipos-evidence.json"'},
+                headers={"Content-Disposition": 'attachment; filename="poseidonos-evidence.json"'},
             )
 
     @app.get("/api/sessions/{sid}/replay.jsonl")
@@ -396,7 +396,7 @@ def create_app() -> FastAPI:
                 media_type="application/x-ndjson",
                 headers={
                     "X-ShipOS-Final-Hash": runner.final_hash,
-                    "Content-Disposition": 'attachment; filename="shipos-replay.jsonl"',
+                    "Content-Disposition": 'attachment; filename="poseidonos-replay.jsonl"',
                 },
             )
 

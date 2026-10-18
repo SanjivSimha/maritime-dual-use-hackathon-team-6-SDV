@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ShipOS: how the backend works</title>
+<style>
+  :root {
+    --navy: #0B2545; --ink: #1E293B; --slate: #64748B; --mute: #94A3B8;
+    --line: #E2E8F0; --panel: #F8FAFC; --teal: #0E7C86; --teal-50: #E6F4F5;
+    --amber: #C2410C; --amber-50: #FFF4EC; --green: #15803D; --green-50: #ECFDF3;
+    --red: #B91C1C; --red-50: #FEF2F2; --blue-50: #EEF3FA;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #CBD5E1; font-family: "Segoe UI", Inter, system-ui, sans-serif; color: var(--ink); }
+  @page { size: 1600px 900px; margin: 0; }
+  .slide {
+    width: 1600px; height: 900px; background: #fff; position: relative; overflow: hidden;
+    margin: 24px auto; padding: 56px 80px 0; display: flex; flex-direction: column;
+    page-break-after: always; break-after: page;
+  }
+  @media print { html, body { background: #fff; } .slide { margin: 0; } }
+  body.single .slide { display: none; margin: 0; }
+  body.single .slide.on { display: flex; }
+
+  .kicker { font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--teal); }
+  h1 { font-size: 44px; font-weight: 700; color: var(--navy); letter-spacing: -.01em; margin-top: 8px; }
+  .sub { font-size: 21px; color: var(--slate); margin-top: 10px; max-width: 1300px; line-height: 1.4; }
+  .body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 20px 0 30px; }
+  .foot {
+    position: absolute; left: 80px; right: 80px; bottom: 24px; display: flex; justify-content: space-between;
+    font-size: 13px; color: var(--mute); border-top: 1px solid var(--line); padding-top: 12px;
+  }
+  .take {
+    margin-bottom: 70px; background: var(--navy); color: #fff; border-radius: 12px; padding: 18px 28px;
+    font-size: 21px; display: flex; gap: 16px; align-items: center;
+  }
+  .take b { color: #7DD3DB; font-weight: 700; white-space: nowrap; }
+
+  .card { background: var(--panel); border: 1.5px solid var(--line); border-radius: 14px; padding: 22px 24px; }
+  .card h3 { font-size: 21px; color: var(--navy); margin-bottom: 6px; }
+  .card p { font-size: 16.5px; color: var(--slate); line-height: 1.45; }
+  .row { display: flex; gap: 22px; align-items: stretch; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .tag { display: inline-block; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+         padding: 3px 10px; border-radius: 99px; }
+  .t-hard { background: var(--navy); color: #fff; }
+  .t-soft { background: var(--teal-50); color: var(--teal); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; padding: 7px 14px;
+          border-radius: 99px; border: 1.5px solid var(--line); background: #fff; color: var(--ink); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: .92em; }
+  .ic { width: 40px; height: 40px; flex: none; }
+  .ic * { fill: none; stroke: var(--teal); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .num { width: 34px; height: 34px; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 700;
+         display: inline-flex; align-items: center; justify-content: center; font-size: 17px; flex: none; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--mute); flex: none; }
+  .arrow svg { overflow: visible; }
+  .verdict { font-weight: 800; letter-spacing: .04em; border-radius: 8px; padding: 4px 12px; font-size: 16px; display: inline-block; }
+  .v-yes { background: var(--green-50); color: var(--green); }
+  .v-if { background: var(--amber-50); color: var(--amber); }
+  .v-no { background: var(--red-50); color: var(--red); }
+  .v-now { background: var(--blue-50); color: var(--navy); }
+  .quote { border-left: 4px solid var(--teal); background: var(--teal-50); padding: 16px 22px; border-radius: 0 10px 10px 0;
+           font-size: 17.5px; line-height: 1.5; color: var(--ink); }
+</style>
+</head>
+<body>
+
+<!-- reusable arrow -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94A3B8"/>
+    </marker>
+    <marker id="ahT" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0E7C86"/>
+    </marker>
+  </defs>
+</svg>
+
+<!-- ============================================================ 1. TITLE -->
+<section class="slide" style="background: linear-gradient(135deg, #0B2545 0%, #12355E 60%, #0E5E6A 100%); color:#fff;">
+  <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+    <div class="kicker" style="color:#7DD3DB;">Fincantieri challenge · Software Defined Vessel · Team 6</div>
+    <div style="font-size:120px; font-weight:800; letter-spacing:-.02em; margin-top:14px;">ShipOS</div>
+    <div style="font-size:34px; font-weight:400; color:#DCE7F3; margin-top:6px; max-width:1100px; line-height:1.3;">
+      A resource governor that decides what mission equipment the ship can carry and run, and explains every decision in numbers.
+    </div>
+    <div style="display:flex; gap:14px; margin-top:48px;">
+      <span class="chip" style="background:transparent; color:#fff; border-color:#ffffff55;"><span class="dot" style="background:#7DD3DB"></span>Offline</span>
+      <span class="chip" style="background:transparent; color:#fff; border-color:#ffffff55;"><span class="dot" style="background:#7DD3DB"></span>Deterministic</span>
+      <span class="chip" style="background:transparent; color:#fff; border-color:#ffffff55;"><span class="dot" style="background:#7DD3DB"></span>Explainable</span>
+      <span class="chip" style="background:transparent; color:#fff; border-color:#ffffff55;"><span class="dot" style="background:#7DD3DB"></span>No ML in the decision path</span>
+    </div>
+  </div>
+  <div style="margin-bottom:40px; font-size:17px; color:#9FB3C8;">How the backend works, in 11 pictures</div>
+</section>
+
+<!-- ============================================================ 2. CONTEXT -->
+<section class="slide">
+  <div class="kicker">1 · The big picture</div>
+  <h1>ShipOS sits between the ship and its mission equipment</h1>
+  <div class="sub">The hull, generators and cooling are fixed. Mission equipment ("guests") is swapped per mission. Every guest competes for the same finite budgets.</div>
+  <div class="body">
+    <div class="row" style="align-items:center; gap:0;">
+      <!-- platform -->
+      <div class="card" style="width:330px;">
+        <div class="tag t-soft">Fixed</div>
+        <h3 style="margin-top:10px;">Ship platform</h3>
+        <p style="margin-bottom:12px;">What the hull provides</p>
+        <div style="display:flex; flex-direction:column; gap:9px; font-size:16.5px;">
+          <div>⚡ 2 generators, 2 power lines</div>
+          <div>❄ Seawater cooling loop</div>
+          <div>▦ Deck bays, hangar, mast</div>
+          <div>📡 SATCOM, radio, acoustic links</div>
+          <div>▤ 4-node compute rack</div>
+        </div>
+      </div>
+      <div class="arrow" style="width:150px; flex-direction:column; gap:6px;">
+        <span style="font-size:14px; color:var(--slate); font-weight:600;">status 1×/s</span>
+        <svg width="120" height="14"><line x1="4" y1="7" x2="116" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/></svg>
+        <span style="font-size:14px; color:var(--slate);">power, sea temp, crew</span>
+      </div>
+      <!-- governor -->
+      <div style="flex:1; background:var(--navy); color:#fff; border-radius:18px; padding:30px 32px; box-shadow:0 12px 30px #0B254533;">
+        <div class="kicker" style="color:#7DD3DB;">The governor</div>
+        <div style="font-size:38px; font-weight:800; margin-top:6px;">ShipOS</div>
+        <div style="font-size:18px; color:#C9D7E6; margin-top:8px; line-height:1.45;">
+          Checks every request against <b style="color:#fff">8 budgets</b>, picks the least costly fix for the mission, and writes down why.
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:20px; font-size:15.5px;">
+          <div style="background:#ffffff14; border-radius:10px; padding:10px 12px;"><b>D1</b> Can it come aboard?</div>
+          <div style="background:#ffffff14; border-radius:10px; padding:10px 12px;"><b>D2</b> Where does it go?</div>
+          <div style="background:#ffffff14; border-radius:10px; padding:10px 12px;"><b>D3</b> Who goes first?</div>
+          <div style="background:#ffffff14; border-radius:10px; padding:10px 12px;"><b>D4</b> What to cut back?</div>
+        </div>
+      </div>
+      <div class="arrow" style="width:150px; flex-direction:column; gap:6px;">
+        <span style="font-size:14px; color:var(--slate); font-weight:600;">requests (cards)</span>
+        <svg width="120" height="34"><line x1="116" y1="7" x2="4" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/><line x1="4" y1="27" x2="116" y2="27" stroke="#0E7C86" stroke-width="2.5" marker-end="url(#ahT)"/></svg>
+        <span style="font-size:14px; color:var(--teal); font-weight:600;">decisions</span>
+      </div>
+      <!-- guests -->
+      <div class="card" style="width:330px;">
+        <div class="tag t-soft">Swappable</div>
+        <h3 style="margin-top:10px;">Mission equipment</h3>
+        <p style="margin-bottom:12px;">Each one ships with a data card</p>
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:16px;">
+          <div><b>G1</b> Passive radio sensor</div>
+          <div><b>G2</b> Ocean &amp; weather module</div>
+          <div><b>G3</b> Seabed inspection vehicle</div>
+          <div><b>G4</b> VTOL rescue drone</div>
+          <div><b>G5</b> Emergency comms node</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:center; margin-top:26px;">
+      <div class="chip" style="font-size:16px; padding:10px 20px;">👤 Operator &amp; crew see every decision with its reason, and confirm safety-critical steps</div>
+    </div>
+  </div>
+  <div class="take"><b>In one line</b> Air-traffic control for power, heat, space and time on board.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>Source: docs/PLAN.md §0, §2</span></div>
+</section>
+
+<!-- ============================================================ 3. EIGHT BUDGETS -->
+<section class="slide">
+  <div class="kicker">2 · What is being governed</div>
+  <h1>Eight finite budgets, all checked on every decision</h1>
+  <div class="sub"><span class="tag t-hard">Hard</span> breaking it means <b>no</b> or <b>yes, if…</b> &nbsp;&nbsp; <span class="tag t-soft">Elastic</span> breaking it means <b>yes</b>, with a stated loss of capability</div>
+  <div class="body">
+    <div class="grid4">
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><path d="M22 4 L10 22 H20 L18 36 L30 17 H20 Z"/></svg><span class="tag t-hard">Hard</span></div>
+        <h3 style="margin-top:12px;">Power</h3><p>Total and per line. Only <b>100 kW</b> for guests with one generator down.</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><path d="M20 5 v18"/><circle cx="20" cy="29" r="6"/><path d="M26 10 h5 M26 16 h5"/></svg><span class="tag t-hard">Hard</span></div>
+        <h3 style="margin-top:12px;">Heat</h3><p>Every kW used becomes 1 kW of heat. Cooling falls as the sea warms: <b>120 kW at 30 °C</b>.</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><rect x="5" y="9" width="30" height="22" rx="2"/><path d="M20 9 v22 M5 20 h15"/></svg><span class="tag t-hard">Hard</span></div>
+        <h3 style="margin-top:12px;">Deck space</h3><p>Bay 1 (whole or two halves), Bay 2, hangar, ramp. Bays can clash.</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><path d="M20 4 v32 M12 36 h16 M13 12 h14 M15 20 h10"/></svg><span class="tag t-hard">Hard</span></div>
+        <h3 style="margin-top:12px;">Mast</h3><p>3 slots, 60 kg each. Scarce, and high weight counts triple for stability.</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><path d="M6 32 h28 M20 32 V12 M8 14 L20 8 L32 14"/></svg><span class="tag t-hard">Hard</span></div>
+        <h3 style="margin-top:12px;">Mass &amp; stability</h3><p><b>10 t</b> mission margin; <b>12 t</b> stability-weighted budget.</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><path d="M8 28 a16 16 0 0 1 24 0 M13 23 a9 9 0 0 1 14 0"/><circle cx="20" cy="31" r="2"/></svg><span class="tag t-soft">Elastic</span></div>
+        <h3 style="margin-top:12px;">Data links</h3><p>SATCOM 2 Mbit/s at 70% availability; zero under radio silence.</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><rect x="8" y="6" width="24" height="8" rx="1.5"/><rect x="8" y="16" width="24" height="8" rx="1.5"/><rect x="8" y="26" width="24" height="8" rx="1.5"/></svg><span class="tag t-soft">Mixed</span></div>
+        <h3 style="margin-top:12px;">Compute</h3><p>4 nodes, 80% allocatable. CPU share is elastic; accelerators are whole units (<b>3 usable</b>).</p></div>
+      <div class="card"><div style="display:flex; justify-content:space-between; align-items:start;"><svg class="ic" viewBox="0 0 40 40"><circle cx="20" cy="21" r="14"/><path d="M20 12 v9 l6 4"/></svg><span class="tag t-hard">Hard</span></div>
+        <h3 style="margin-top:12px;">Response time</h3><p>Admission ≤ 30 s · right-of-way ≤ 2 s · first cut ≤ 5 s · safety ≤ 200 ms.</p></div>
+    </div>
+  </div>
+  <div class="take"><b>Why it matters</b> Power is not the only limit. In warm water, cooling can run out before power does.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>Values: data/ship/reference_vessel.yaml (Annex A)</span></div>
+</section>
+
+<!-- ============================================================ 4. FOUR QUESTIONS ONE ENGINE -->
+<section class="slide">
+  <div class="kicker">3 · The core idea</div>
+  <h1>Four questions, one physics engine</h1>
+  <div class="sub">All four decisions ask the same "does it fit?" check. They differ only in <i>what options they try</i> and <i>what they optimise</i>. The physics lives in one place, so the answers never contradict each other.</div>
+  <div class="body">
+    <div style="display:grid; grid-template-columns: 1fr 360px 1fr; gap:26px; align-items:center;">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card" style="border-left:5px solid var(--teal);"><div style="display:flex; justify-content:space-between;"><h3>D1 · Admission</h3><span class="chip" style="padding:3px 10px; font-size:13.5px;">≤ 30 s</span></div>
+          <p>"Can this new equipment come aboard?" Tries removing, throttling or interlocking others. Answers <span class="verdict v-yes" style="font-size:13px; padding:1px 8px;">YES</span> <span class="verdict v-if" style="font-size:13px; padding:1px 8px;">YES-IF</span> <span class="verdict v-now" style="font-size:13px; padding:1px 8px;">NOT NOW</span> <span class="verdict v-no" style="font-size:13px; padding:1px 8px;">NO</span></p></div>
+        <div class="card" style="border-left:5px solid var(--teal);"><div style="display:flex; justify-content:space-between;"><h3>D2 · Placement</h3><span class="chip" style="padding:3px 10px; font-size:13.5px;">part of D1</span></div>
+          <p>"Where should it go?" Tries every bay, slot and power line. Keeps the most headroom and future flexibility, and lists the top rejected layouts.</p></div>
+      </div>
+      <div style="background:var(--navy); color:#fff; border-radius:50%; width:360px; height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px; box-shadow:0 0 0 14px var(--teal-50), 0 0 0 16px #CFE7EA;">
+        <div class="kicker" style="color:#7DD3DB;">Shared</div>
+        <div style="font-size:30px; font-weight:800; margin-top:6px; line-height:1.15;">Feasibility kernel</div>
+        <div style="font-size:16px; color:#C9D7E6; margin-top:12px; line-height:1.45;">For a given loadout, check all 8 budgets in every worst-case condition and return the tightest one</div>
+        <div class="mono" style="font-size:13px; color:#7DD3DB; margin-top:14px;">engine/kernel.py</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card" style="border-left:5px solid var(--amber);"><div style="display:flex; justify-content:space-between;"><h3>D3 · Right of way</h3><span class="chip" style="padding:3px 10px; font-size:13.5px;">≤ 2 s</span></div>
+          <p>"Two guests need conflicting ship states. Who wins?" Drops unsafe options, then maximises mission value. States the cost to the loser.</p></div>
+        <div class="card" style="border-left:5px solid var(--amber);"><div style="display:flex; justify-content:space-between;"><h3>D4 · Degradation</h3><span class="chip" style="padding:3px 10px; font-size:13.5px;">≤ 5 s / 60 s</span></div>
+          <p>"A generator tripped. What do we cut?" Throttle before standby, standby before shutdown. Never cuts safety-critical equipment or the D3 winner.</p></div>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:center; gap:18px; margin-top:28px;">
+      <div class="chip" style="font-size:15.5px; padding:9px 18px;"><b style="color:var(--teal)">D5</b>&nbsp;Crew policy gate: confirms or blocks actions by crew size (14 / 6 / 0)</div>
+      <div class="chip" style="font-size:15.5px; padding:9px 18px;"><b style="color:var(--teal)">D6</b>&nbsp;Physical Account: every number, its source and where it is used</div>
+    </div>
+  </div>
+  <div class="take"><b>Design choice</b> Change one number on a card and every decision updates consistently.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>shipos/engine/ admission · placement · arbitration · shedding · kernel</span></div>
+</section>
+
+<!-- ============================================================ 5. DECISION PIPELINE -->
+<section class="slide">
+  <div class="kicker">4 · How a decision is made</div>
+  <h1>Six steps from request to recorded answer</h1>
+  <div class="sub">The same pipeline runs for every decision. Nothing is learned, guessed or scripted.</div>
+  <div class="body">
+    <div class="row" style="gap:0; align-items:stretch;">
+      <div class="card" style="flex:1;"><span class="num">1</span><h3 style="margin-top:14px;">Read inputs</h3><p>Ship facts, equipment cards, mission priorities, operating envelope. All plain YAML files.</p></div>
+      <div class="arrow" style="width:36px;"><svg width="26" height="14"><line x1="2" y1="7" x2="22" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/></svg></div>
+      <div class="card" style="flex:1;"><span class="num">2</span><h3 style="margin-top:14px;">Check every budget</h3><p>All 8 budgets, in every worst case the mission allows (see next slide).</p></div>
+      <div class="arrow" style="width:36px;"><svg width="26" height="14"><line x1="2" y1="7" x2="22" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/></svg></div>
+      <div class="card" style="flex:1; border-color:#F5C9A8; background:var(--amber-50);"><span class="num" style="background:var(--amber);">3</span><h3 style="margin-top:14px;">Find the binding limit</h3><p>The single budget with the least headroom. This becomes the reason.</p></div>
+      <div class="arrow" style="width:36px;"><svg width="26" height="14"><line x1="2" y1="7" x2="22" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/></svg></div>
+      <div class="card" style="flex:1;"><span class="num">4</span><h3 style="margin-top:14px;">Try every fix</h3><p>Remove, throttle, defer or interlock others. The space is small, so we try them all.</p></div>
+      <div class="arrow" style="width:36px;"><svg width="26" height="14"><line x1="2" y1="7" x2="22" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/></svg></div>
+      <div class="card" style="flex:1;"><span class="num">5</span><h3 style="margin-top:14px;">Rank by mission</h3><p>Cheapest loss of mission value wins. Weights come from the swappable priority file.</p></div>
+      <div class="arrow" style="width:36px;"><svg width="26" height="14"><line x1="2" y1="7" x2="22" y2="7" stroke="#94A3B8" stroke-width="2.5" marker-end="url(#ah)"/></svg></div>
+      <div class="card" style="flex:1; border-color:#B7DDE1; background:var(--teal-50);"><span class="num">6</span><h3 style="margin-top:14px;">Explain &amp; record</h3><p>A sentence built from the binding numbers, appended to a tamper-evident log.</p></div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; margin-top:34px;">
+      <div style="font-size:16.5px; color:var(--slate); line-height:1.5;"><b style="color:var(--navy)">Why try every option?</b><br>5 guests × up to 4 modes ≈ 1,000 combinations. That takes milliseconds, gives the same answer every time, and produces the ranked list of alternatives the brief asks for.</div>
+      <div style="font-size:16.5px; color:var(--slate); line-height:1.5;"><b style="color:var(--navy)">Why "binding limit"?</b><br>Judges and crew don't need 40 numbers. They need the one that decides, with who is using it.</div>
+      <div style="font-size:16.5px; color:var(--slate); line-height:1.5;"><b style="color:var(--navy)">How does it scale?</b><br>A built-in guard switches to a greedy search if the space grows. A constraint solver (OR-Tools) is the next step.</div>
+    </div>
+  </div>
+  <div class="take"><b>Result</b> Every answer comes with its reason, its alternatives and the cost to whoever loses.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>docs/PLAN.md §2, decisions 1–2, 8</span></div>
+</section>
+
+<!-- ============================================================ 6. ENVELOPE CORNERS -->
+<section class="slide">
+  <div class="kicker">5 · Planning for the worst case</div>
+  <h1>A "yes" must hold in every corner of the mission envelope</h1>
+  <div class="sub">We don't check today's weather. We check the worst conditions the mission allows, so the ship never has to unload equipment mid-mission.</div>
+  <div class="body">
+    <div style="display:grid; grid-template-columns: 640px 1fr; gap:60px; align-items:center;">
+      <div style="position:relative; padding:40px 0 0 120px;">
+        <div style="position:absolute; top:0; left:120px; right:0; display:flex; font-weight:700; color:var(--navy); font-size:17px;">
+          <div style="flex:1; text-align:center;">Slow speed</div><div style="flex:1; text-align:center;">Cruise speed</div>
+        </div>
+        <div style="position:absolute; left:0; top:40px; bottom:0; width:110px; display:flex; flex-direction:column; font-weight:700; color:var(--navy); font-size:17px;">
+          <div style="flex:1; display:flex; align-items:center;">2 generators</div><div style="flex:1; display:flex; align-items:center;">1 generator<br>down</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div class="card" style="height:150px; display:flex; flex-direction:column; justify-content:center; align-items:center;"><span class="verdict v-yes">✓ fits</span><p style="margin-top:8px;">30 °C sea</p></div>
+          <div class="card" style="height:150px; display:flex; flex-direction:column; justify-content:center; align-items:center;"><span class="verdict v-yes">✓ fits</span><p style="margin-top:8px;">30 °C sea</p></div>
+          <div class="card" style="height:150px; display:flex; flex-direction:column; justify-content:center; align-items:center; border:2.5px solid var(--amber); background:var(--amber-50);"><span class="verdict v-if">✗ 101.5 / 100 kW</span><p style="margin-top:8px; color:var(--amber); font-weight:600;">binding corner (reported)</p></div>
+          <div class="card" style="height:150px; display:flex; flex-direction:column; justify-content:center; align-items:center; border:2.5px solid var(--amber); background:var(--amber-50);"><span class="verdict v-if">✗ 101.5 / 100 kW</span><p style="margin-top:8px; color:var(--amber); font-weight:600;">also short</p></div>
+        </div>
+        <div style="margin-top:16px; border:2px dashed var(--mute); border-radius:14px; padding:14px 18px; font-size:16px; color:var(--slate);">
+          <b style="color:var(--navy)">Contingency (dashed):</b> cooling loop degraded at 30 °C. Not in the default envelope, so each verdict pre-computes a cut-back plan for it instead.
+        </div>
+      </div>
+      <div>
+        <div style="font-size:22px; color:var(--navy); font-weight:700; margin-bottom:16px;">Example: the G4 rescue drone</div>
+        <div style="display:flex; flex-direction:column; gap:14px; font-size:18px; line-height:1.45;">
+          <div style="display:flex; gap:14px;"><span class="num">1</span><div>Both two-generator corners pass easily (200 kW available).</div></div>
+          <div style="display:flex; gap:14px;"><span class="num">2</span><div>In both one-generator corners, guests may draw only <b>100 kW</b>. Drone charging plus the G2 winch would need <b>101.5 kW</b>.</div></div>
+          <div style="display:flex; gap:14px;"><span class="num">3</span><div>So the verdict is <span class="verdict v-if">YES-IF</span>: "the winch waits while the drone charges, <i>only when a generator is down</i>."</div></div>
+          <div style="display:flex; gap:14px;"><span class="num" style="background:var(--slate)">→</span><div>The jury can widen the envelope (e.g. include a degraded loop) in one YAML line, and the verdict recomputes.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="take"><b>Principle</b> Admit only what works in the worst case. Then say exactly what changes in that case.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>data/envelopes/default.yaml · engine/kernel.py corners()</span></div>
+</section>
+
+<!-- ============================================================ 7. WORKED EXAMPLE -->
+<section class="slide">
+  <div class="kicker">6 · Worked example from the real engine</div>
+  <h1>Jury hands us the G4 drone card. What does ShipOS say?</h1>
+  <div class="sub">Scenario A: G1, G2 and G5 already installed. Output below comes from running <span class="mono">engine.admission.decide()</span>, not from a slide.</div>
+  <div class="body">
+    <div style="display:grid; grid-template-columns: minmax(0,1fr) 440px; gap:44px; align-items:start;">
+      <div>
+        <div style="font-size:17px; font-weight:700; color:var(--navy); margin-bottom:12px;">Power demand in the binding corner (slow, 30 °C, one generator down)</div>
+        <!-- stacked bar: scale 101.5 kW -> 900px ; 1 kW = 8.4px -->
+        <svg width="100%" viewBox="0 0 960 190" style="font-family:'Segoe UI',sans-serif; display:block;">
+          <rect x="0" y="44" width="360" height="70" fill="#0B2545"/>
+          <rect x="360" y="44" width="280" height="70" fill="#0E7C86"/>
+          <rect x="640" y="44" width="160" height="70" fill="#C2410C"/>
+          <rect x="800" y="44" width="12" height="70" fill="#64748B"/>
+          <text x="180" y="86" fill="#fff" font-size="19" font-weight="700" text-anchor="middle">G5 comms node · 45</text>
+          <text x="500" y="86" fill="#fff" font-size="19" font-weight="700" text-anchor="middle">G4 drone charging · 35</text>
+          <text x="720" y="86" fill="#fff" font-size="17" font-weight="700" text-anchor="middle">G2 winch · 20</text>
+          <text x="824" y="86" fill="#64748B" font-size="15">◂ G1 · 1.5</text>
+          <text x="812" y="32" fill="#1E293B" font-size="18" font-weight="700" text-anchor="end">101.5 kW needed ▾</text>
+          <line x1="800" y1="40" x2="800" y2="140" stroke="#B91C1C" stroke-width="3" stroke-dasharray="6 4"/>
+          <text x="794" y="164" fill="#B91C1C" font-size="18" font-weight="700" text-anchor="end">100 kW usable</text>
+          <text x="0" y="140" fill="#64748B" font-size="14">0 kW</text>
+        </svg>
+        <div style="display:flex; gap:16px; margin-top:18px; align-items:center;">
+          <span class="verdict v-if" style="font-size:22px; padding:8px 18px;">YES-IF</span>
+          <div style="font-size:19px;"><b>Fix:</b> interlock G2's winch while G4 charges, <b>only when a generator is down</b>.</div>
+        </div>
+        <div class="quote" style="margin-top:22px;">
+          <div style="font-size:13px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--teal); margin-bottom:6px;">Rationale, generated by the engine</div>
+          "Admit G4 if G2's winch waits while G4 charging with one genset down: at slow speed in 30 °C water with one genset down, guests need <b>101.5 kW</b> against <b>100 kW</b> usable (1.5 kW short; G5 45, G4 35, G2 20, G1 1.5 kW); this costs 0.05 capability against 0.2 returned."
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card"><h3>What else the decision carries</h3>
+          <div style="display:flex; flex-direction:column; gap:10px; font-size:16.5px; margin-top:8px; line-height:1.4;">
+            <div>📍 <b>Placement:</b> G4 → hangar</div>
+            <div>📋 <b>Ranked alternatives:</b> throttle or remove others, each with its cost</div>
+            <div>⚡ <b>Holds with one generator down?</b> Only with the interlock</div>
+            <div>❄ <b>Contingency:</b> a cut-back list if the cooling loop degrades at 30 °C</div>
+          </div>
+        </div>
+        <div class="card" style="background:#fff;"><h3>Jury changes one number</h3>
+          <p style="margin-top:6px;">Set G4's mass to 20 t and the verdict flips to <span class="verdict v-no" style="font-size:13px; padding:1px 8px;">NO</span>, binding on hangar mass. Same code, new reason.</p></div>
+        <div class="card" style="background:#fff;"><h3>Card G3 instead</h3>
+          <p style="margin-top:6px;"><span class="verdict v-if" style="font-size:13px; padding:1px 8px;">YES-IF</span> displace G5. Binding: Bay 1 holds 2 units, G3 + G5 need 3.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>tests/engine/test_admission.py · output captured from merged main</span></div>
+</section>
+
+<!-- ============================================================ 8. PRIORITY SWAP -->
+<section class="slide">
+  <div class="kicker">7 · Mission priorities are data, not code</div>
+  <h1>Same ship, same physics, different mission → different answer</h1>
+  <div class="sub">Swap one file (<span class="mono">priorities/survey_primary.yaml</span> ↔ <span class="mono">sar_primary.yaml</span>) and the ranking changes. Both answers are computed, neither is scripted.</div>
+  <div class="body">
+    <div style="display:grid; grid-template-columns: 260px 1fr 1fr; gap:0; border:1.5px solid var(--line); border-radius:16px; overflow:hidden;">
+      <div style="background:var(--panel); padding:22px;"></div>
+      <div style="background:var(--navy); color:#fff; padding:22px 28px;"><div class="kicker" style="color:#7DD3DB;">Priority file</div><div style="font-size:26px; font-weight:700; margin-top:4px;">Survey primary</div><div style="font-size:15px; color:#C9D7E6;">Seabed inspection matters most</div></div>
+      <div style="background:#0E5E6A; color:#fff; padding:22px 28px;"><div class="kicker" style="color:#B7EEF2;">Priority file</div><div style="font-size:26px; font-weight:700; margin-top:4px;">Search &amp; rescue primary</div><div style="font-size:15px; color:#CFEFF2;">Rescue drone and comms matter most</div></div>
+
+      <div style="background:var(--panel); padding:24px 22px; border-top:1.5px solid var(--line);"><b style="font-size:19px; color:var(--navy);">D1</b><div style="font-size:15.5px; color:var(--slate); margin-top:4px;">Jury card G3<br>(Bay 1 is full)</div></div>
+      <div style="padding:24px 28px; border-top:1.5px solid var(--line);"><span class="verdict v-if">YES-IF</span><div style="font-size:17.5px; margin-top:10px; line-height:1.45;">Displace G5. Costs 0.2 capability, returns 1.0. Worth it for a survey.</div></div>
+      <div style="padding:24px 28px; border-top:1.5px solid var(--line); border-left:1.5px solid var(--line);"><span class="verdict v-no">NO</span><div style="font-size:17.5px; margin-top:10px; line-height:1.45;">Cheapest fix costs 0.5 capability, more than the 0.2 G3 returns on a rescue mission.</div></div>
+
+      <div style="background:var(--panel); padding:24px 22px; border-top:1.5px solid var(--line);"><b style="font-size:19px; color:var(--navy);">D4</b><div style="font-size:15.5px; color:var(--slate); margin-top:4px;">Generator down, two batteries charging<br>106.5 kW &gt; 100 kW</div></div>
+      <div style="padding:24px 28px; border-top:1.5px solid var(--line);"><span class="verdict v-if">THROTTLE</span><div style="font-size:17.5px; margin-top:10px; line-height:1.45;">G5 comms node to low power: <b>45 → 8 kW</b> (37 kW recovered). Survey keeps running.</div></div>
+      <div style="padding:24px 28px; border-top:1.5px solid var(--line); border-left:1.5px solid var(--line);"><span class="verdict v-if">DEFER</span><div style="font-size:17.5px; margin-top:10px; line-height:1.45;">G3's charge waits <b>5 min</b> until the drone finishes. Comms node kept at full power for the rescue.</div></div>
+    </div>
+    <div style="display:flex; gap:18px; margin-top:22px; font-size:16.5px; color:var(--slate);">
+      <div style="flex:1;"><b style="color:var(--navy)">What's in the file:</b> a weight per guest, an asset-loss penalty, "protect the D3 winner", tie-breaks.</div>
+      <div style="flex:1;"><b style="color:var(--navy)">What's not:</b> any rule. "Mission-critical" is derived from the weights, never hard-coded.</div>
+    </div>
+  </div>
+  <div class="take"><b>For the jury</b> Hand us a new priority file and the governor re-ranks every decision without a code change.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>tests/engine/test_admission.py · test_shedding.py (D4 on a labelled controlled input)</span></div>
+</section>
+
+<!-- ============================================================ 9. SCENARIO B TIMELINE -->
+<section class="slide">
+  <div class="kicker">8 · A live run</div>
+  <h1>Scenario B, second by second</h1>
+  <div class="sub">A seeded simulator ticks once per second. Events trigger the real engine. Loadout: G1, G3, G4, G5 · 24 °C sea · 3 knots.</div>
+  <div class="body">
+    <div style="position:relative; height:440px;">
+      <div style="position:absolute; left:0; right:0; top:206px; height:6px; background:linear-gradient(90deg, var(--teal), var(--navy)); border-radius:3px;"></div>
+      <!-- events: positions for t=0, 480, 720, 840, 841, 1021 over 1440px -->
+      <div style="position:absolute; left:0; top:0; width:230px;">
+        <div class="card" style="height:170px;"><div class="mono" style="color:var(--teal); font-weight:700;">t = 0 s</div><h3 style="margin-top:6px;">Steady state</h3><p>Survey under way, drone flying. All budgets green.</p></div>
+      </div>
+      <div style="position:absolute; left:10px; top:196px; width:26px; height:26px; border-radius:50%; background:#fff; border:5px solid var(--teal);"></div>
+
+      <div style="position:absolute; left:260px; top:250px; width:290px;">
+        <div class="card" style="height:178px; border-color:#F5C9A8;"><div class="mono" style="color:var(--amber); font-weight:700;">t = 480 s · battery report</div><h3 style="margin-top:6px;">D3 right-of-way</h3><p>Drone must land; G3 needs quiet. <b>Drone recovery wins.</b> G3 paused (survey) or suspended (SAR).</p></div>
+      </div>
+      <div style="position:absolute; left:392px; top:196px; width:26px; height:26px; border-radius:50%; background:#fff; border:5px solid var(--amber);"></div>
+
+      <div style="position:absolute; left:580px; top:0; width:290px;">
+        <div class="card" style="height:170px;"><div class="mono" style="color:var(--navy); font-weight:700;">t = 720 s · generator trip</div><h3 style="margin-top:6px;">D4 degradation</h3><p>Draw is 49.5 kW vs 100 kW. Answer: <span class="verdict v-yes" style="font-size:13px; padding:1px 8px;">NO ACTION</span>. A trip is not an overload.</p></div>
+      </div>
+      <div style="position:absolute; left:712px; top:196px; width:26px; height:26px; border-radius:50%; background:#fff; border:5px solid var(--navy);"></div>
+
+      <div style="position:absolute; left:900px; top:250px; width:290px;">
+        <div class="card" style="height:178px;"><div class="mono" style="color:var(--navy); font-weight:700;">t = 840 s · prep ready</div><h3 style="margin-top:6px;">D5 crew gate</h3><p>Ship is ready, but the drone <b>keeps flying</b> until a human confirms the deck is clear.</p></div>
+      </div>
+      <div style="position:absolute; left:1032px; top:196px; width:26px; height:26px; border-radius:50%; background:#fff; border:5px solid var(--navy);"></div>
+
+      <div style="position:absolute; left:1210px; top:0; width:230px;">
+        <div class="card" style="height:170px; border-color:#B7DDE1; background:var(--teal-50);"><div class="mono" style="color:var(--teal); font-weight:700;">t = 841 s · confirmed</div><h3 style="margin-top:6px;">Drone recovers</h3><p>Operator confirmation recorded; recovery starts on the next tick.</p></div>
+      </div>
+      <div style="position:absolute; left:1312px; top:196px; width:26px; height:26px; border-radius:50%; background:#fff; border:5px solid var(--teal);"></div>
+    </div>
+    <div style="display:flex; gap:22px; margin-top:24px;">
+      <div class="chip">👥 14 crew: human confirms, drone lands</div>
+      <div class="chip">👥 6 crew: deck clearing starts early from the battery forecast</div>
+      <div class="chip">👥 6 or 0 crew, deck occupied (baseline B): denied or blocked, no landing</div>
+    </div>
+  </div>
+  <div class="take"><b>Honest by design</b> Human confirmation is an input we wait for, never something the planner assumes.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>data/scenarios/B.timeline.yaml · tests/api/test_execution_acceptance.py</span></div>
+</section>
+
+<!-- ============================================================ 10. TECH STACK -->
+<section class="slide">
+  <div class="kicker">9 · Technology architecture</div>
+  <h1>Five layers, all running on one laptop, fully offline</h1>
+  <div class="sub">Python 3.11 backend, a plain browser front end, no cloud services, no build step, no external solver.</div>
+  <div class="body">
+    <div style="display:grid; grid-template-columns: 1fr 380px; gap:40px; align-items:center;">
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:grid; grid-template-columns:200px 1fr 260px; gap:0; align-items:stretch; border-radius:12px; overflow:hidden; border:1.5px solid var(--line);">
+          <div style="background:#334E68; color:#fff; padding:16px 18px; font-weight:700; font-size:18px;">5 · Interface</div>
+          <div style="padding:14px 20px; font-size:16.5px;">Browser dashboard: ship view (3D, offline), 8 gauges, decision log, card editor, scenario controls</div>
+          <div style="padding:14px 18px; background:var(--panel); font-size:14.5px; color:var(--slate);" class="mono">vanilla JS · SVG · three.js (vendored)</div>
+        </div>
+        <div style="display:flex; justify-content:center;"><div style="width:2px; height:18px; background:#CBD5E1;"></div></div>
+        <div style="display:grid; grid-template-columns:200px 1fr 260px; border-radius:12px; overflow:hidden; border:1.5px solid var(--line);">
+          <div style="background:#243B53; color:#fff; padding:16px 18px; font-weight:700; font-size:18px;">4 · API</div>
+          <div style="padding:14px 20px; font-size:16.5px;">Sessions, commands, live push over WebSocket, evidence export, replay download</div>
+          <div style="padding:14px 18px; background:var(--panel); font-size:14.5px; color:var(--slate);" class="mono">FastAPI · uvicorn · WebSocket</div>
+        </div>
+        <div style="display:flex; justify-content:center;"><div style="width:2px; height:18px; background:#CBD5E1;"></div></div>
+        <div style="display:grid; grid-template-columns:200px 1fr 260px; border-radius:12px; overflow:hidden; border:1.5px solid var(--line);">
+          <div style="background:#0E5E6A; color:#fff; padding:16px 18px; font-weight:700; font-size:18px;">3 · Simulator</div>
+          <div style="padding:14px 20px; font-size:16.5px;">Seeded 1 Hz clock, event timeline, consumption profiles, weather from cache, execution controller, crew policy (D5)</div>
+          <div style="padding:14px 18px; background:var(--panel); font-size:14.5px; color:var(--slate);" class="mono">shipos/sim · shipos/crew</div>
+        </div>
+        <div style="display:flex; justify-content:center;"><div style="width:2px; height:18px; background:#CBD5E1;"></div></div>
+        <div style="display:grid; grid-template-columns:200px 1fr 260px; border-radius:12px; overflow:hidden; border:2.5px solid var(--navy);">
+          <div style="background:var(--navy); color:#fff; padding:16px 18px; font-weight:700; font-size:18px;">2 · Engine</div>
+          <div style="padding:14px 20px; font-size:16.5px;"><b>Pure functions.</b> Physics for 8 budgets, feasibility kernel, D1–D4, rationale renderer, ship state machine</div>
+          <div style="padding:14px 18px; background:var(--panel); font-size:14.5px; color:var(--slate);" class="mono">shipos/physics · shipos/engine</div>
+        </div>
+        <div style="display:flex; justify-content:center;"><div style="width:2px; height:18px; background:#CBD5E1;"></div></div>
+        <div style="display:grid; grid-template-columns:200px 1fr 260px; border-radius:12px; overflow:hidden; border:1.5px solid var(--line);">
+          <div style="background:#627D98; color:#fff; padding:16px 18px; font-weight:700; font-size:18px;">1 · Data</div>
+          <div style="padding:14px 20px; font-size:16.5px;">Ship, guest cards, priorities, envelope, scenarios, assumption registry, all validated against frozen contracts</div>
+          <div style="padding:14px 18px; background:var(--panel); font-size:14.5px; color:var(--slate);" class="mono">YAML · pydantic · JSON Schema</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card" style="border-left:5px solid var(--teal);"><h3>Decision log</h3><p>Append-only JSONL. Each line carries the hash of the one before, so any edit breaks the chain.</p></div>
+        <div class="card" style="border-left:5px solid var(--teal);"><h3>Replay</h3><p>The exported bundle (inputs + seed + log) re-runs the engine and must reproduce the same final hash.</p></div>
+        <div class="card" style="border-left:5px solid var(--teal);"><h3>Engineering</h3><p>uv for locked dependencies, pytest, ruff, GitHub Actions CI with guardrail checks.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>pyproject.toml · shipos/ · shipos/api/static/</span></div>
+</section>
+
+<!-- ============================================================ 11. DATA FLOW -->
+<section class="slide">
+  <div class="kicker">10 · Data flow at runtime</div>
+  <h1>One tick of the system</h1>
+  <div class="sub">Every second the simulator builds an immutable snapshot of the world. If an event needs a decision, the pure engine answers and the log records it.</div>
+  <div class="body">
+    <svg viewBox="0 -36 1440 506" width="1440" height="506" style="font-family:'Segoe UI',sans-serif;">
+      <!-- boxes -->
+      <g font-size="20" font-weight="700" fill="#0B2545">
+        <rect x="0" y="40" width="250" height="130" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+        <text x="125" y="92" text-anchor="middle">Inputs</text>
+        <text x="125" y="120" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">YAML: ship, cards,</text>
+        <text x="125" y="140" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">priorities, timeline</text>
+
+        <rect x="0" y="290" width="250" height="130" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+        <text x="125" y="342" text-anchor="middle">Operator</text>
+        <text x="125" y="370" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">new card, priority swap,</text>
+        <text x="125" y="390" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">deck-clear confirmation</text>
+
+        <rect x="340" y="150" width="250" height="170" rx="14" fill="#E6F4F5" stroke="#B7DDE1" stroke-width="1.5"/>
+        <text x="465" y="205" text-anchor="middle">Simulator</text>
+        <text x="465" y="233" text-anchor="middle" font-size="15" font-weight="400" fill="#475569">seeded clock, 1 tick/s</text>
+        <text x="465" y="253" text-anchor="middle" font-size="15" font-weight="400" fill="#475569">applies events &amp;</text>
+        <text x="465" y="273" text-anchor="middle" font-size="15" font-weight="400" fill="#475569">consumption</text>
+
+        <rect x="680" y="150" width="250" height="170" rx="14" fill="#0B2545"/>
+        <text x="805" y="205" text-anchor="middle" fill="#fff">Engine</text>
+        <text x="805" y="233" text-anchor="middle" font-size="15" font-weight="400" fill="#C9D7E6">pure: snapshot in,</text>
+        <text x="805" y="253" text-anchor="middle" font-size="15" font-weight="400" fill="#C9D7E6">Decision out.</text>
+        <text x="805" y="273" text-anchor="middle" font-size="15" font-weight="400" fill="#C9D7E6">No clock, no I/O.</text>
+
+        <rect x="1020" y="40" width="200" height="130" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+        <text x="1120" y="92" text-anchor="middle">Execution</text>
+        <text x="1120" y="120" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">opt-in: applies chosen</text>
+        <text x="1120" y="140" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">action + crew gate</text>
+
+        <rect x="1020" y="290" width="200" height="130" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+        <text x="1120" y="342" text-anchor="middle">Decision log</text>
+        <text x="1120" y="370" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">hash-chained</text>
+        <text x="1120" y="390" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">JSONL</text>
+
+        <rect x="1290" y="150" width="150" height="170" rx="14" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+        <text x="1365" y="215" text-anchor="middle">Dashboard</text>
+        <text x="1365" y="243" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">via API +</text>
+        <text x="1365" y="263" text-anchor="middle" font-size="15" font-weight="400" fill="#64748B">WebSocket</text>
+      </g>
+      <!-- arrows -->
+      <g stroke="#94A3B8" stroke-width="2.5" fill="none" marker-end="url(#ah)">
+        <path d="M250 105 C300 105 300 200 336 200"/>
+        <path d="M250 355 C300 355 300 270 336 270"/>
+        <path d="M594 235 H676" stroke="#0E7C86" marker-end="url(#ahT)"/>
+        <path d="M930 200 C980 200 980 105 1016 105"/>
+        <path d="M930 270 C980 270 980 355 1016 355"/>
+        <path d="M1220 105 C1255 105 1255 200 1286 200"/>
+        <path d="M1220 355 C1255 355 1255 270 1286 270"/>
+        <path d="M1120 36 C1120 -10 465 -10 465 146" stroke-dasharray="7 6"/>
+      </g>
+      <g font-size="15" font-weight="600" fill="#0E7C86">
+        <text x="635" y="222" text-anchor="middle">snapshot</text>
+        <text x="790" y="-14" text-anchor="middle" fill="#64748B">applied action changes the next tick's state</text>
+      </g>
+      <!-- snapshot legend -->
+      <g font-size="15" fill="#475569">
+        <rect x="340" y="350" width="590" height="96" rx="12" fill="#fff" stroke="#E2E8F0" stroke-dasharray="5 4"/>
+        <text x="360" y="378" font-weight="700" fill="#0B2545">WorldSnapshot (immutable)</text>
+        <text x="360" y="403">time · ship state (speed, course, noise, deck, emission) · generators</text>
+        <text x="360" y="426">sea temp, sea state, wind · crew level · every guest's mode and place</text>
+      </g>
+    </svg>
+  </div>
+  <div class="take"><b>Why pure?</b> Same inputs and seed always give the same decisions, so any run can be replayed and audited.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>shipos/sim/runner.py · shipos/contracts.py WorldSnapshot · shipos/sim/log.py</span></div>
+</section>
+
+<!-- ============================================================ 12. TRUST -->
+<section class="slide">
+  <div class="kicker">11 · Why you can trust the answers</div>
+  <h1>Six guarantees, each enforced by an automated check</h1>
+  <div class="sub">These aren't promises in a README. CI blocks any change that breaks them.</div>
+  <div class="body">
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px;">
+      <div class="card"><div style="display:flex; gap:14px; align-items:center;"><span class="num">1</span><h3 style="margin:0;">No magic numbers</h3></div>
+        <p style="margin-top:12px;">Engine code may not contain numbers. Each one lives in a registry with its <b>value, unit, range, reason and source</b>.</p>
+        <div class="mono" style="margin-top:12px; font-size:13.5px; color:var(--teal);">✓ tests/test_no_literals.py</div></div>
+      <div class="card"><div style="display:flex; gap:14px; align-items:center;"><span class="num">2</span><h3 style="margin:0;">No canned explanations</h3></div>
+        <p style="margin-top:12px;">Every rationale is assembled from the binding constraint. A test fails if a sentence lacks its numbers.</p>
+        <div class="mono" style="margin-top:12px; font-size:13.5px; color:var(--teal);">✓ tests/engine/test_rationale.py</div></div>
+      <div class="card"><div style="display:flex; gap:14px; align-items:center;"><span class="num">3</span><h3 style="margin:0;">Deterministic</h3></div>
+        <p style="margin-top:12px;">No randomness or wall clock inside the engine. Same seed and timeline → byte-identical log hash.</p>
+        <div class="mono" style="margin-top:12px; font-size:13.5px; color:var(--teal);">✓ tests/sim/test_runner.py</div></div>
+      <div class="card"><div style="display:flex; gap:14px; align-items:center;"><span class="num">4</span><h3 style="margin:0;">Checked against the brief</h3></div>
+        <p style="margin-top:12px;">Expected results are computed from Annex inputs inside the tests, never copied from engine output.</p>
+        <div class="mono" style="margin-top:12px; font-size:13.5px; color:var(--teal);">✓ tests/physics · tests/engine</div></div>
+      <div class="card"><div style="display:flex; gap:14px; align-items:center;"><span class="num">5</span><h3 style="margin:0;">Tamper-evident</h3></div>
+        <p style="margin-top:12px;">The decision log is hash-chained. Replay re-runs the decisions, not just the hashes.</p>
+        <div class="mono" style="margin-top:12px; font-size:13.5px; color:var(--teal);">✓ shipos/sim/log.py verify_jsonl</div></div>
+      <div class="card"><div style="display:flex; gap:14px; align-items:center;"><span class="num">6</span><h3 style="margin:0;">Fails closed</h3></div>
+        <p style="margin-top:12px;">Bad or ambiguous input is rejected as a whole. Unsupported actions stay blocked rather than guessed.</p>
+        <div class="mono" style="margin-top:12px; font-size:13.5px; color:var(--teal);">✓ tests/api/test_import_card.py</div></div>
+    </div>
+    <div style="margin-top:24px; display:flex; gap:14px; flex-wrap:wrap;">
+      <span class="chip">🔍 We checked the brief's arithmetic: "any four guests exceed 10 t" is false ({G1,G3,G4,G5} = 9.61 t)</span>
+      <span class="chip">🛡 Civil use only · no ML in decisions</span>
+    </div>
+  </div>
+  <div class="take"><b>Bottom line</b> Every decision can be traced to a number, every number to a source.</div>
+  <div class="foot"><span>ShipOS · Team 6</span><span>CLAUDE.md rules 1–6 · .github/workflows/ci.yml</span></div>
+</section>
+
+<script>
+  // ?slide=N shows only slide N (used for PNG export)
+  const n = new URLSearchParams(location.search).get("slide");
+  if (n) {
+    document.body.classList.add("single");
+    const s = document.querySelectorAll(".slide")[+n - 1];
+    if (s) s.classList.add("on");
+  }
+  document.querySelectorAll(".slide").forEach((s, i, all) => {
+    const f = s.querySelector(".foot span");
+    if (f) f.textContent += `  ·  ${i + 1} / ${all.length}`;
+  });
+</script>
+</body>
+</html>
