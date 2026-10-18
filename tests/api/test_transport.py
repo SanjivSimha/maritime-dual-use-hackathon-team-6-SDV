@@ -178,7 +178,7 @@ def test_browser_offline_edit_reset_and_untrusted_text(server):
         decision = page.locator("#decision").inner_text()
         assert "Right of way (D3)" in decision and "computed (LIVE)" in decision
         assert "Goes first" in decision and "SAMPLE" not in decision
-        page.click("#mission details:has([data-op]) summary")
+        page.click("details:has([data-op]) summary")
         page.click('[data-op="shedding"]')
         page.wait_for_function("state.decision?.kind === 'shedding'")
         assert "Degradation plan (D4)" in page.locator("#decision").inner_text()
