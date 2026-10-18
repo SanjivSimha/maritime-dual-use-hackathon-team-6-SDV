@@ -69,7 +69,8 @@ def run_to(page, t):
 
 
 def story(page):
-    return page.locator("#story").inner_text()
+    # text_content: the explanation rows sit in a collapsed <details>, which inner_text skips.
+    return page.locator("#story").text_content()
 
 
 def start_execution(page, crew):
