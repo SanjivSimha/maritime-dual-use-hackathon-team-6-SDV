@@ -89,6 +89,9 @@ def describe(b: ConstraintResult) -> str:
     if r.startswith(("deck.", "mast.")) and r.endswith((".mass", ".area")):
         slot = r.split(".")[1]
         return f"{slot} takes {cap} {u} and would carry {dem} {u}{_paren(_who(b.contributors, u))}"
+    if r.startswith(("deck.", "mast.")) and r.endswith(".shared"):
+        names = " and ".join(sorted(b.contributors))
+        return f"{r.split('.')[1]} takes one item and {names} would share it"
     if r.startswith("deck.hangar_roof.clearance"):
         return f"the hangar-roof antenna is {dem} m tall against {cap} m drone clearance"
     if head in ("deck", "mast"):

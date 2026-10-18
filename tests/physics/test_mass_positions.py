@@ -74,3 +74,29 @@ def test_unplaced_part_is_flagged(ship, guests):
     assert any(not r.ok and r.resource == "deck.unplaced.G5.antenna" for r in res)
     # stability charges the unplaced antenna at its worst allowed slot (mast, × 3)
     assert mass.stability_t(ship, guests, {"G5": P(body="bay2")}) == pytest.approx(3.075)
+
+
+def test_two_guests_on_one_bay_half_are_refused_even_when_group_units_fit(guests):
+    """Bay 1 has two 1-unit halves; G2 and G5 both on bay1a fit the group count but not the slot."""
+    from shipos.data import load_ship
+
+    doubled = {"G2": P(body="bay1a"), "G5": P(body="bay1a", antenna="hangar_roof")}
+    results = {r.resource: r for r in positions.check(load_ship(), guests, doubled)}
+    assert results["deck.bay1"].ok  # 2 units of 2: the group count alone misses it
+    assert not results["deck.bay1a.shared"].ok
+    split = {"G2": P(body="bay1a"), "G5": P(body="bay1b", antenna="hangar_roof")}
+    assert all(r.ok for r in positions.check(load_ship(), guests, split))
+
+
+def test_bay_half_guest_goes_to_the_free_half(ship, guests, survey, envelope):
+    """Scenario A has G5 on bay1a; a light half-bay card must land on bay1b, not share bay1a."""
+    from shipos.contracts import SlotKind
+    from shipos.engine import admission
+    from tests.engine.scenario import scenario_a
+
+    half = [SlotKind.BAY1_HALF]  # a light 10-ft card that only fits a Bay 1 half
+    card = guests["G2"].model_copy(
+        update={"id": "GX", "mass_t": 0.5, "parts": [], "preferred": half, "allowed": half}
+    )
+    d = admission.decide(ship, {**guests, "GX": card}, scenario_a(), card, survey, envelope)
+    assert d.placement["GX"].slots["body"] == "bay1b"

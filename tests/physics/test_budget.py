@@ -17,3 +17,16 @@ def test_eight_gauges_for_scenario_b(ship, guests):
     assert power.facts["degraded_capacity"] == 100
     heat = next(g for g in gauges if g.resource == "heat.loop")
     assert round(heat.capacity, 1) == 133.3 and heat.facts["degraded_capacity"] == 80
+
+
+def test_time_gauge_is_judged_against_the_ceiling_of_the_measured_decision(ship, guests):
+    """A.8: admission 30 s, arbitration 2 s, first shed action 5 s; demand is the measured time."""
+    snap = WorldSnapshot.model_validate_json((FIX / "snapshot_scenario_b_min8.json").read_text())
+    for kind, ceiling in (
+        ("admission", ship.timing.admission_s),
+        ("arbitration", ship.timing.arbitration_s),
+        ("shed_first", ship.timing.shed_first_s),
+    ):
+        gauges = budget.gauges(ship, guests, snap, last_latency_s=0.042, latency_kind=kind)
+        t = next(g for g in gauges if g.cls == ResourceClass.TIME)
+        assert t.resource == f"time.{kind}" and t.capacity == ceiling and t.demand == 0.042
