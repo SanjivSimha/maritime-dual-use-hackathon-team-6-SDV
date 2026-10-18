@@ -728,7 +728,9 @@ function renderAboard(snap) {
 }
 
 function renderGauges() {
-  const limiting = shownDecision()?.binding?.cls;
+  const binding = shownDecision()?.binding;
+  // A time-class binding (e.g. a landing deadline) is not this gauge's engine latency.
+  const limits = g => g.cls === binding?.cls && (g.cls !== "time" || g.resource === binding.resource);
   $("gauges").replaceChildren(...state.gauges.map(g => {
     const box = node("article", undefined, "gauge");
     const title = node("h3", RESOURCES[g.cls] ?? g.cls);
@@ -740,12 +742,21 @@ function renderGauges() {
     }
     const ratio = g.capacity > 0 ? g.demand / g.capacity : (g.demand > 0 ? Infinity : 0);
     if (ratio > 1) box.classList.add("over"); else if (ratio > 0.8) box.classList.add("warn");
-    if (g.cls === limiting) {
+    if (limits(g)) {
       box.classList.add("limiting");
       box.title = "Binding constraint of the current result, checked in its own envelope corner; the bar shows this snapshot.";
       title.append(node("span", "◆ limits the result", "flag"));
     }
-    box.append(node("p", `${number(g.demand)} / ${number(g.capacity)} ${g.unit}`, "value"));
+    if (g.cls === "time") {
+      // Measured engine time is milliseconds against an A.8 ceiling of seconds.
+      const f = g.facts ?? {};
+      const ms = g.demand * 1000;
+      box.append(node("p", `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms / ${number(g.capacity)} s`, "value"));
+      const offset = f.scheduled_offset_s ? ` incl. ${number(f.scheduled_offset_s)} s scheduled first-shed delay` : "";
+      title.append(node("small", `last: ${f.decision ?? "decision"} ${f.subject ?? ""} at t=${number(f.t_s)} s${offset}`));
+    } else {
+      box.append(node("p", `${number(g.demand)} / ${number(g.capacity)} ${g.unit}`, "value"));
+    }
     const bar = node("div", undefined, "bar");
     const fill = node("span");
     fill.style.width = `${Math.min(100, ratio * 100)}%`;

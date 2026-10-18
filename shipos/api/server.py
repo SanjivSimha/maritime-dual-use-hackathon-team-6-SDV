@@ -80,6 +80,7 @@ class Session:
     unavailable: list[dict] = field(default_factory=list)
     replay: dict | None = None
     archives: list[dict] = field(default_factory=list)
+    latency: dict | None = None  # measured time of the latest real engine decision (A.8)
     notice: str = "LIVE Runner ready. First step emits t=0; no decision actions are applied."
 
     @property
@@ -212,7 +213,8 @@ def apply(state: Session, cmd: Command) -> Session:
     elif cmd.op == "arbitration":
         if "G4" not in state.snapshot.guests:
             raise ValueError("D3 right of way needs the drone (G4) aboard; none is installed here")
-        state.decision = arbitration.decide(
+        state.decision = adapter.measure(
+            arbitration.decide,
             context.ship,
             context.manifests,
             state.snapshot,
@@ -222,14 +224,18 @@ def apply(state: Session, cmd: Command) -> Session:
             confirm=getattr(context, "recovery_confirm", "human"),
         )
     else:
-        state.decision = shedding.plan(
+        state.decision = adapter.measure(
+            shedding.plan,
             context.ship,
             context.manifests,
             state.snapshot,
             context.priorities,
             protected=getattr(context, "protected", frozenset()),
         )
+    if state.decision is not None and state.mode != "SAMPLE":
+        state.latency = adapter.latency_record(state.decision) or state.latency
     if inputs or cmd.op == "step":
+        measured_before = state.simulation.decide.count
         records = state.simulation.advance(cmd.ticks if cmd.op == "step" else 1, inputs)
         for record in records:
             for decision in record["decisions"]:
@@ -247,6 +253,8 @@ def apply(state: Session, cmd: Command) -> Session:
                 )
         if state.simulation.execution:
             state.notice = "LIVE execution enabled; inspect actual pending/applied/blocked status."
+        if state.simulation.decide.count > measured_before:
+            state.latency = state.simulation.decide.latest
         decisions = records[-1]["decisions"]
         state.decision = Decision.model_validate(decisions[-1]) if decisions else None
     elif state.decision:
@@ -262,15 +270,29 @@ def view(state: Session) -> dict:
     context = state.simulation.runner.context
     ship = context.ship
     try:
-        values = {r.cls: r for r in budget.gauges(ship, context.manifests, state.snapshot)}
+        latency = state.latency or {}
+        values = {
+            r.cls: r
+            for r in budget.gauges(
+                ship,
+                context.manifests,
+                state.snapshot,
+                last_latency_s=latency.get("seconds", 0),
+                latency_kind=latency.get("kind", "arbitration"),
+            )
+        }
+        if state.latency is not None:
+            values[ResourceClass.TIME] = values[ResourceClass.TIME].model_copy(
+                update={"facts": {**values[ResourceClass.TIME].facts, **state.latency}}
+            )
         error = None
     except NotImplementedError as exc:
         values, error = {}, str(exc)
     gauges = []
     for cls in ResourceClass:
         result = values.get(cls)
-        # The public gauge's default zero latency is not a measured response time.
-        available = result is not None and cls != ResourceClass.TIME
+        # Response time is shown only once a real engine call has been timed.
+        available = result is not None and (cls != ResourceClass.TIME or state.latency is not None)
         gauges.append(
             {
                 **(
@@ -279,9 +301,13 @@ def view(state: Session) -> dict:
                     else {"cls": cls.value, "unit": result.unit if result else None}
                 ),
                 "status": "available" if available else "unavailable",
-                "source": "physics.budget.gauges / current snapshot"
+                "source": (
+                    "measured wall-clock time of the latest engine decision"
+                    if cls == ResourceClass.TIME
+                    else "physics.budget.gauges / current snapshot"
+                )
                 if available
-                else error or "No response-time measurement for this snapshot",
+                else error or "Measured on the first engine decision; none made yet",
             }
         )
     return {

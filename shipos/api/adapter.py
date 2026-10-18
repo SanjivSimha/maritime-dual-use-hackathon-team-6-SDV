@@ -1,6 +1,7 @@
 """Public Runner adapter and a versioned, pure callback shared by execution/replay."""
 
 import json
+import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
@@ -57,11 +58,52 @@ def parse_card(text: str, catalogue: dict[str, GuestManifest]) -> GuestManifest:
     return card
 
 
-def callback(envelope: Envelope):
-    # The runner header captures ship/manifests/priorities, but not this envelope.
-    envelope = envelope.model_copy(deep=True)
+# A.8 ceiling each decision kind is judged against (physics.timing names).
+LATENCY_KIND = {"admission": "admission", "arbitration": "arbitration", "shedding": "shed_first"}
 
-    def decide(snapshot, events, context):
+
+def measure(engine_call, *args, **kwargs) -> Decision:
+    """Run one real engine call and stamp its wall-clock time on the Decision.
+
+    The clock is read here, outside the pure engine. `latency_ms` is excluded from the
+    hash-chained log by the Runner, so measuring never changes replay bytes.
+    """
+    started = time.perf_counter()
+    decision = engine_call(*args, **kwargs)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    return decision.model_copy(update={"latency_ms": elapsed_ms})
+
+
+def latency_record(decision: Decision) -> dict | None:
+    """Response time for the TIME gauge: engine time, plus the scheduled first-shed offset."""
+    if decision.latency_ms is None or decision.kind.value not in LATENCY_KIND:
+        return None
+    seconds = decision.latency_ms / 1000
+    offset = 0.0
+    if decision.kind.value == "shedding" and decision.chosen and decision.chosen.actions:
+        offset = min(a.t_offset_s or 0.0 for a in decision.chosen.actions)
+    return {
+        "kind": LATENCY_KIND[decision.kind.value],
+        "decision": decision.kind.value,
+        "subject": decision.subject,
+        "engine_ms": round(decision.latency_ms, 3),
+        "scheduled_offset_s": offset,
+        "seconds": seconds + offset,
+        "t_s": decision.t_s,
+    }
+
+
+class EngineCallback:
+    """The Runner's decide callback; remembers the measured time of its latest decision."""
+
+    def __init__(self, envelope: Envelope):
+        # The runner header captures ship/manifests/priorities, but not this envelope.
+        self.envelope = envelope.model_copy(deep=True)
+        self.latest: dict | None = None
+        self.count = 0
+
+    def __call__(self, snapshot, events, context):
+        envelope = self.envelope
         cards = [
             GuestManifest.model_validate(e.payload["card"])
             for e in events
@@ -70,15 +112,22 @@ def callback(envelope: Envelope):
         if not cards and any(e.kind in ("priority_swap", "crew_change") for e in events):
             cards = list(context.cards.values())
         decisions = [
-            admission.decide(
-                context.ship, context.manifests, snapshot, card, context.priorities, envelope
+            measure(
+                admission.decide,
+                context.ship,
+                context.manifests,
+                snapshot,
+                card,
+                context.priorities,
+                envelope,
             )
             for card in cards
         ]
         for event in events:
             if event.kind == "battery_report":
                 decisions.append(
-                    arbitration.decide(
+                    measure(
+                        arbitration.decide,
                         context.ship,
                         context.manifests,
                         snapshot,
@@ -90,7 +139,8 @@ def callback(envelope: Envelope):
                 )
             elif event.kind in ("genset_trip", "cooling_loss"):
                 decisions.append(
-                    shedding.plan(
+                    measure(
+                        shedding.plan,
                         context.ship,
                         context.manifests,
                         snapshot,
@@ -99,9 +149,15 @@ def callback(envelope: Envelope):
                     )
                 )
         # NotImplementedError propagates to Runner, which records batch unavailability.
+        for decision in decisions:
+            record = latency_record(decision)
+            if record is not None:
+                self.latest, self.count = record, self.count + 1
         return decisions
 
-    return decide
+
+def callback(envelope: Envelope) -> EngineCallback:
+    return EngineCallback(envelope)
 
 
 class EnvironmentConfig(BaseModel):
@@ -162,7 +218,7 @@ class Simulation:
         kwargs = {"environment": self.environment_input}
         if hasattr(Runner, "execution_status"):
             kwargs["execution"] = execution
-        decide = callback(self.envelope)
+        decide = self.decide = callback(self.envelope)
         if scenario == "B":
             self.runner = load_scenario(DATA_DIR / "scenarios" / "B.yaml", decide=decide, **kwargs)
         else:

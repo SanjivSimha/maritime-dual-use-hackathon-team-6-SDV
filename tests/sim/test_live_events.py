@@ -238,6 +238,6 @@ def test_changed_injected_input_changes_replay_evidence(make_runner):
 def test_no_injection_preserves_documented_hash_and_omits_extension():
     sim = load_scenario(DATA_DIR / "scenarios/B.yaml")
     sim.run(721)
-    assert sim.final_hash == "ca3abd5b32afaf260fd2575b718945c7b6584d5d8263d373d7712acb7ef62a28"
+    assert sim.final_hash == "3e43733a289dabdbd77b2cda1bbea4cc176f153bf9e6eb101e205b7b691712d7"
     assert b'"injected_events"' not in sim.jsonl
     assert replay_jsonl(sim.jsonl).jsonl == sim.jsonl

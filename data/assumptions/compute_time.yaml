@@ -12,6 +12,8 @@ assumptions:
   - {id: compute.g4.accelerators, value: 1, unit: accelerators, why: Person-in-water detection on drone video., source: invented}
   - {id: compute.g5.cores, value: 4, unit: cores, why: The node brings its own edge compute; the rack only hosts its control plane., source: invented}
   - {id: compute.g5.mem_gb, value: 16, unit: GB, why: See compute.g5.cores., source: invented}
+  - {id: compute.g6.cores, value: 2, unit: cores, why: Patient-monitor aggregation and telemedicine relay., source: invented}
+  - {id: compute.g6.mem_gb, value: 8, unit: GB, why: See compute.g6.cores., source: invented}
   - id: placement.margin_tie_tolerance
     value: 0.01
     unit: normalised margin

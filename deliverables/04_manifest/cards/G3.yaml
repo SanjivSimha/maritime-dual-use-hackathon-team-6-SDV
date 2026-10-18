@@ -1,0 +1,51 @@
+# Annex B — G3 Seabed inspection vehicle + cradle.
+id: G3
+name: Seabed inspection vehicle + cradle
+mass_t: 5.5
+cooling: water
+preferred: [bay1_whole]
+allowed: [bay1_whole]
+modes:
+  - {name: standby, tier: standby, power_kw: 1, capability_factor: 0}
+  - name: surveying                # vehicle submerged, cradle on standby power
+    power_kw: 1
+    duration_min: 40
+    next_mode: recovering
+    conditions:
+      speed_kn: {lo: "$guests.g3.survey_speed_lo_kn", hi: "$guests.g3.survey_speed_hi_kn"}
+      course: steady
+      noise: quiet
+      deck_machinery_allowed: false
+  - {name: holding, power_kw: 1, capability_factor: 0}    # vehicle holds depth autonomously
+  - name: recovering
+    power_kw: 1
+    duration_min: "$guests.g3.recovery_min"
+    next_mode: charging
+    capability_factor: 0
+    conditions:
+      speed_kn: {lo: 4, hi: 8}
+      course: steady
+      sea_state_max: 4
+      uses_ramp: true
+  - {name: charging, power_kw: 25, duration_min: 60, next_mode: standby, interruptible: false,
+     deferrable: true, capability_factor: 0}
+initial_mode: standby
+activities:
+  - name: survey_leg
+    mode: surveying
+    duration_min: 40
+    preempt:
+      - {name: pause, hold_mode: holding, window_min: 15, rerun: true}
+      - {name: suspend, hold_mode: holding, window_min: "$guests.g3.suspend_window_min", rerun: true}
+data:
+  - {link: acoustic, mbps: 0.003}  # 3 kbit/s while submerged
+  - {link: backbone, mbps: 100}    # on cradle
+compute: {cores: "$compute.g3.cores", mem_gb: "$compute.g3.mem_gb", accelerators: "$compute.g3.accelerators"}
+capability:
+  name: cable / pipeline inspection
+  value_by_mission: {survey: high, rescue: low}
+  default: low
+  tags: [inspection, seabed]
+installation: {where: port_only, people: 4, hours: 6}
+at_sea_swap: {what: vehicle, via: ramp, people: 4, minutes: 45}
+safety_commands: {link: acoustic, autonomous_fallback: hold_depth}
